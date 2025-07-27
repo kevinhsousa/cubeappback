@@ -1,0 +1,388 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  senha     String
+  nome      String
+  tipo      TipoUsuario @default(ADMIN)
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  // Relacionamentos
+  candidatosCriados Candidato[] @relation("CandidatoCriadoPor")
+  insightsCriados   InsightEstrategico[] @relation("InsightCriadoPor")
+
+  @@map("usuarios")
+}
+
+model Candidato {
+  id                    String   @id @default(cuid())
+  nome                  String
+  foto                  String?
+  cargoId               String?
+  macrorregiaoId        String? 
+  redutoOrigem          String?
+  votosUltimaEleicao    Int?
+  populacaoCidade       Int?
+  votosValidos          Int?
+  observacoes          String?
+  cargoPretendidoId       String?
+  votosNecessarios      Int?
+  pontuacaoViabilidade  Float?
+  instagramHandle       String?
+  ativo                 Boolean  @default(true)
+  criadoEm              DateTime @default(now())
+  atualizadoEm          DateTime @updatedAt
+  mandato String?
+
+  // Campos do Instagram (Apify)
+  instagramId           String?  @unique
+  instagramUrl          String?
+  instagramFullName     String?
+  instagramBiography    String?
+  instagramExternalUrls Json?
+  followersCount        Int?
+  followsCount          Int?
+  hasChannel            Boolean?
+  highlightReelCount    Int?
+  isBusinessAccount     Boolean?
+  joinedRecently        Boolean?
+  businessCategoryName  String?
+  private               Boolean?
+  verified              Boolean?
+  profilePicUrl         String?
+  profilePicUrlHD       String?
+  igtvVideoCount        Int?
+  postsCount            Int?
+  fbid                  String?
+  ultimoScrapingEm      DateTime?
+
+  criadoPor             String
+  criador               Usuario @relation("CandidatoCriadoPor", fields: [criadoPor], references: [id])
+  cargo                 Cargo? @relation(fields: [cargoId], references: [id])
+  cargoPretendido      Cargo? @relation("CargoPretendido", fields: [cargoPretendidoId], references: [id])
+  macrorregiao          Macrorregiao? @relation(fields: [macrorregiaoId], references: [id])
+  insights              InsightEstrategico[]
+  publicacoes           Publicacoes[]
+  historicoSeguidores   HistoricoSeguidores[]
+  analisesSentimento    AnalisesSentimento[]
+  viabilidades          AnaliseViabilidade[] 
+  simulacoesCenarios    SimuladorCenarios[]
+
+  urlRss                 String?
+  urlDrive               String?
+  @@map("candidatos")
+}
+
+model Macrorregiao {
+  id           String   @id @default(cuid())
+  nome         String   @unique
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  candidatos   Candidato[]
+
+  @@map("macrorregioes")
+}
+
+model Publicacoes {
+  id                    String   @id @default(cuid())
+  candidatoId           String
+  candidato             Candidato @relation(fields: [candidatoId], references: [id], onDelete: Cascade)
+  
+  // Campos da publicação do Instagram (Apify)
+  instagramPostId       String   @unique // id do post
+  type                  String?  // "Image", "Video", "Sidecar"
+  shortCode             String?  // código curto do Instagram
+  caption               String?  // legenda da publicação
+  hashtags              Json?    // array de hashtags
+  mentions              Json?    // array de mentions
+  url                   String?  // URL da publicação
+  commentsCount         Int?     // número de comentários
+  displayUrl            String?  // URL da imagem/vídeo principal
+  likesCount            Int?     // número de likes
+  timestamp             DateTime? // quando foi publicado
+  ownerUsername         String?  // username do dono
+  ownerId               String?  // ID do dono no Instagram
+  
+  // Campos específicos
+  dimensionsHeight      Int?     // altura da mídia
+  dimensionsWidth       Int?     // largura da mídia
+  images                Json?    // array de URLs de imagens (para Sidecar)
+  videoUrl              String?  // URL do vídeo (para Video)
+  videoViewCount        Int?     // visualizações do vídeo
+  alt                   String?  // texto alternativo
+  locationName          String?  // nome da localização
+  locationId            String?  // ID da localização
+  productType           String? 
+  taggedUsers           Json?    // usuários marcados
+  childPosts            Json? 
+  isCommentsDisabled    Boolean? // comentários desabilitados
+  
+  comentarios           Comentarios[]
+  analisesSentimento    AnalisesSentimento[]
+  
+  criadoEm              DateTime @default(now())
+  atualizadoEm          DateTime @updatedAt
+
+  @@map("publicacoes")
+}
+
+model Comentarios {
+  id                    String   @id @default(cuid())
+  publicacaoId          String
+  publicacao            Publicacoes @relation(fields: [publicacaoId], references: [id], onDelete: Cascade)
+  
+  // Campos do comentário
+  instagramCommentId    String   @unique // id do comentário no Instagram
+  postUrl               String?  // URL do post original
+  commentUrl            String?  // URL específica do comentário
+  text                  String   // texto do comentário
+  timestamp             DateTime? // quando foi comentado
+  repliesCount          Int?     // quantidade de respostas
+  likesCount            Int?     // quantidade de likes no comentário
+  
+  // Dados de quem comentou
+  ownerUsername         String?
+  ownerProfilePicUrl    String?
+  ownerFullName         String?
+  ownerId               String? 
+  ownerFbidV2           String?
+  ownerIsMentionable    Boolean?
+  ownerIsPrivate        Boolean?
+  ownerIsVerified       Boolean?
+  ownerLatestReelMedia  BigInt? 
+  ownerProfilePicId     String?
+  
+  criadoEm              DateTime @default(now())
+  atualizadoEm          DateTime @updatedAt
+
+  @@map("comentarios")
+}
+
+model HistoricoSeguidores {
+  id                    String   @id @default(cuid())
+  candidatoId           String
+  candidato             Candidato @relation(fields: [candidatoId], references: [id], onDelete: Cascade)
+  
+  // Métricas coletadas
+  followersCount        Int
+  followsCount          Int
+  postsCount            Int?
+  igtvVideoCount        Int?
+  highlightReelCount    Int?
+  
+  // Metadata da coleta
+  dataColeta            DateTime @default(now())
+  tipoColeta            TipoColeta @default(AUTOMATICA)
+  
+  // Cálculos de variação (preenchidos automaticamente)
+  variacaoSeguidores    Int?     // diferença em relação ao registro anterior
+  percentualVariacao    Float?   // % de crescimento/perda
+  diasEntreMedicoes     Int?     // dias desde última medição
+  
+  criadoEm              DateTime @default(now())
+
+  @@map("historico_seguidores")
+  @@index([candidatoId, dataColeta])
+}
+
+model AnalisesSentimento {
+ id                        String   @id @default(cuid())
+ publicacaoId              String
+ candidatoId               String
+ 
+ // Tipo de análise realizada
+ tipoAnalise               TipoAnalise @default(COMENTARIOS)
+ 
+ // Resultado da análise
+ sentimentoLabel           SentimentoLabel
+ sentimentoScore           Float    // -1.0 a 1.0
+ confianca                 Float    // 0.0 a 1.0
+ 
+ // Metadados da análise
+ totalComentariosAnalisados Int?
+ resumoInsights            Json?    // palavras-chave, temas encontrados
+ 
+ // Controle técnico
+ processadoEm              DateTime @default(now())
+ geminiModel               String?  // ex: "gemini-1.5-flash"
+ versaoPrompt              String?  // para controle de versão
+ 
+ // Relacionamentos
+ publicacao                Publicacoes @relation(fields: [publicacaoId], references: [id], onDelete: Cascade)
+ candidato                 Candidato @relation(fields: [candidatoId], references: [id], onDelete: Cascade)
+ 
+ // Controle interno
+ criadoEm                  DateTime @default(now())
+ atualizadoEm              DateTime @updatedAt
+
+ @@map("analises_sentimento")
+ @@index([candidatoId, processadoEm])
+ @@index([publicacaoId])
+}
+
+model AnaliseViabilidade {
+  id                    String   @id @default(cuid())
+  candidatoId           String
+  
+  // Score da IA
+  scoreViabilidade      Float    // 0-100
+  categoria             ViabilidadeCategoria
+  confianca             Float    // 0-1
+  
+  // Contexto usado na análise
+  dadosQuantitativos    Json     // seguidores, crescimento, etc.
+  resumoSentimento      Json     // análises de sentimento
+  
+  // Resultado da IA
+  justificativa         String   // Por que chegou neste score
+  pontosFortes          Json     // Array de pontos fortes
+  pontosAtencao         Json     // Array de riscos/melhorias
+  
+  // Metadata
+  processadoEm          DateTime @default(now())
+  geminiModel           String?
+  versaoPrompt          String?
+  
+  // Relacionamentos
+  candidato             Candidato @relation(fields: [candidatoId], references: [id], onDelete: Cascade)
+  
+  // Controle interno
+  criadoEm              DateTime @default(now())
+  atualizadoEm          DateTime @updatedAt
+
+  @@map("analises_viabilidade")
+  @@index([candidatoId, processadoEm])
+}
+
+enum ViabilidadeCategoria {
+  ALTA
+  MEDIA
+  RISCO
+  CRITICO
+}
+
+enum TipoAnalise {
+ COMENTARIOS
+ PUBLICACAO
+ COMPLETA
+}
+
+enum SentimentoLabel {
+ POSITIVO
+ NEGATIVO
+ NEUTRO
+}
+
+enum TipoColeta {
+  AUTOMATICA
+  MANUAL
+}
+
+model Cargo {
+  id           String   @id @default(cuid())
+  nome         String   @unique
+  descricao    String?
+  nivel        NivelCargo
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  candidatos   Candidato[]
+  candidatosPretendidos Candidato[] @relation("CargoPretendido")
+
+  @@map("cargos")
+}
+
+model InsightEstrategico {
+  id           String            @id @default(cuid())
+  candidatoId  String?
+  titulo       String
+  conteudo     String
+  criadoEm     DateTime          @default(now())
+  atualizadoEm DateTime          @updatedAt
+
+  // Relacionamentos
+  criadoPor    String
+  criador      Usuario    @relation("InsightCriadoPor", fields: [criadoPor], references: [id])
+  candidato    Candidato? @relation(fields: [candidatoId], references: [id])
+
+  @@map("insights_estrategicos")
+}
+model DominioRSS {
+  id              String            @id @default(cuid())
+  nome            String            // Nome amigável (ex: "CNN Brasil")
+  dominio         String            @unique // Domínio (ex: "cnnbrasil.com.br")
+  ativo           Boolean           @default(true)
+  ordem           Int?              // Ordem de exibição
+  cor             String?           // Cor tema (hex) para UI
+  isRSSapp        Boolean           @default(false)
+  criadoEm        DateTime          @default(now())
+  atualizadoEm    DateTime          @updatedAt
+
+  @@map("dominios_rss")
+}
+
+model SimuladorCenarios {
+  id                    String   @id @default(cuid())
+  candidatoId           String
+  
+  // Dados base para cálculo
+  categoria             String   // "Federal" ou "Estadual"
+  tipoCanditato         String   // "VETERANO" ou "ESTREANTE"
+  
+  // Métricas calculadas
+  scoreCube             Float    // Score realista (0-100)
+  gapEleitoral          Float    // G = |VOTOS_NECESSARIOS - VOTOS_CANDIDATO| / VOTOS_NECESSARIOS
+  deficitEngajamento    Float    // D = max(0, 1% - TE) / 1%
+  incerteza             Float    // U = 0.5 × (G + D)
+  
+  // Cenários finais
+  cenarioOtimista       Int      // O = min(100, S + (100 - S) × α × U)
+  cenarioRealista       Int      // R = S
+  cenarioPessimista     Int      // P = max(0, S - S × β × U)
+  
+  // Parâmetros utilizados
+  parametrosCalculo     Json     // α, β, I_ref, dados base
+  
+  // Metadata
+  processadoEm          DateTime @default(now())
+  versaoAlgoritmo       String   @default("v1.0")
+  
+  // Relacionamentos
+  candidato             Candidato @relation(fields: [candidatoId], references: [id], onDelete: Cascade)
+  
+  // Controle interno
+  criadoEm              DateTime @default(now())
+  atualizadoEm          DateTime @updatedAt
+
+  @@map("simulador_cenarios")
+  @@index([candidatoId, processadoEm])
+}
+
+
+enum TipoUsuario {
+  ADMIN
+  USUARIO
+}
+
+enum NivelCargo {
+  FEDERAL
+  ESTADUAL
+  MUNICIPAL
+  DISTRITAL
+}

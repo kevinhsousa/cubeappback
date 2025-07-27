@@ -1,0 +1,15 @@
+-- AlterTable
+ALTER TABLE "publicacoes" ADD COLUMN     "alt" TEXT,
+ADD COLUMN     "childPosts" JSONB,
+ADD COLUMN     "dimensionsHeight" INTEGER,
+ADD COLUMN     "dimensionsWidth" INTEGER,
+ADD COLUMN     "hashtags" JSONB,
+ADD COLUMN     "images" JSONB,
+ADD COLUMN     "isCommentsDisabled" BOOLEAN,
+ADD COLUMN     "locationId" TEXT,
+ADD COLUMN     "locationName" TEXT,
+ADD COLUMN     "mentions" JSONB,
+ADD COLUMN     "productType" TEXT,
+ADD COLUMN     "taggedUsers" JSONB,
+ADD COLUMN     "videoUrl" TEXT,
+ADD COLUMN     "videoViewCount" INTEGER;

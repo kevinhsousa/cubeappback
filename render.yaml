@@ -1,0 +1,12 @@
+# Exported from Render on 2025-07-19T14:28:59Z
+databases:
+- name: postgrecube
+  databaseName: cube_ybel
+  user: cube_ybel_user
+  plan: free
+  region: oregon
+  ipAllowList:
+  - source: 0.0.0.0/0
+    description: everywhere
+  postgresMajorVersion: "16"
+version: "1"

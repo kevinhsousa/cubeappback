@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: cube_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cube
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - cube_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cube"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Node.js Application
+  app:
+    build: .
+    container_name: cube_app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:admin@db:5432/cube?schema=public
+      PORT: 3001
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: 7d
+      FRONTEND_URL: https://vmi2715784.contaboserver.net
+      APIFY_TOKEN: ${APIFY_TOKEN}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    ports:
+      - "127.0.0.1:8442:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - cube_network
+    volumes:
+      - ./logs:/app/logs
+    command: sh -c "npx prisma generate && (npx prisma migrate deploy || echo 'Migration failed, continuing...') && npm start"
+
+volumes:
+  postgres_data:
+
+networks:
+  cube_network:
+    driver: bridge

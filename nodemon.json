@@ -1,0 +1,9 @@
+{
+  "watch": ["src"],
+  "ext": "js,json",
+  "ignore": ["node_modules", "prisma/migrations"],
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "delay": 1000
+}
