@@ -31,7 +31,7 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://postgres:admin@db:5432/cube?schema=public
       PORT: 3001
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: sua_chave_jwt_super_segura_para_producao_123456789
       JWT_EXPIRES_IN: 7d
       FRONTEND_URL: https://cubeapp-omega.vercel.app
       APIFY_TOKEN: ${APIFY_TOKEN}
