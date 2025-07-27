@@ -33,7 +33,7 @@ services:
       PORT: 3001
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: 7d
-      FRONTEND_URL: https://vmi2715784.contaboserver.net
+      FRONTEND_URL: https://cubeapp-omega.vercel.app
       APIFY_TOKEN: ${APIFY_TOKEN}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
     ports:
