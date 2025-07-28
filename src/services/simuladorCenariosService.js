@@ -365,9 +365,9 @@ export const processarSimulacoesPendentes = async () => {
                 },
                 // Não tem simulação OU simulação é antiga (>24h)
                 OR: [
-                    { cenarios: { none: {} } },
+                    { simulacoesCenarios: { none: {} } }, // ✅ CORRIGIDO: era 'cenarios'
                     {
-                        cenarios: {
+                        simulacoesCenarios: { // ✅ CORRIGIDO: era 'cenarios'
                             every: {
                                 processadoEm: {
                                     lt: new Date(Date.now() - 24 * 60 * 60 * 1000)
