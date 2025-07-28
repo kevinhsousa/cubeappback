@@ -67,6 +67,10 @@ export const analisarViabilidadeCandidato = async (candidatoId) => {
             }
             
             resultadoAnalise = await executarScoreCube(candidato);
+            if (!resultadoAnalise) {
+                // Em caso de erro na IA, não salva nada
+                return null;
+            }
             
         } else {
             // ✅ ANÁLISE IA para Municipal/Distrital/outros
@@ -78,6 +82,10 @@ export const analisarViabilidadeCandidato = async (candidatoId) => {
             }
             
             resultadoAnalise = await executarAnaliseIA(candidato);
+            if (!resultadoAnalise) {
+                // Em caso de erro na IA, não salva nada
+                return null;
+            }
         }
 
         // Salvar análise no banco
