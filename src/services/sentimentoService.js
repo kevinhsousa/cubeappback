@@ -87,7 +87,8 @@ export const analisarSentimentoComentarios = async (publicacaoId) => {
         
         if (comentariosFiltrados.length === 0) {
             console.log('📭 Nenhum comentário relevante após filtragem');
-            return await salvarAnaliseVazia(publicacaoId, publicacao.candidato.id, 'Nenhum comentário relevante');
+            // Não salva nada, apenas retorna null
+            return null;
         }
 
         // Preparar contexto do candidato
