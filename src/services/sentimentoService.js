@@ -7,7 +7,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Configuração do modelo Gemini
 const model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash",
+    model: "gemini-2.0-flash",
     generationConfig: {
         temperature: 0.1, // Mais baixo para consistência
         topK: 1,
@@ -136,27 +136,11 @@ export const analisarSentimentoComentarios = async (publicacaoId) => {
 
     } catch (error) {
         console.error('❌ Erro na análise de sentimento:', error.message);
-        
-        // Salvar erro para não tentar novamente
+        // Não salva nada em caso de erro de IA, apenas retorna null
         if (error.message.includes('publicação')) {
-            throw error; // Re-throw se for erro de dados
+            throw error; // Re-throw se for erro de dados (publicação não encontrada)
         }
-        
-        // Para erros de API, salvar análise com baixa confiança
-        try {
-            const publicacao = await prisma.publicacoes.findUnique({
-                where: { id: publicacaoId },
-                select: { candidatoId: true }
-            });
-            
-            if (publicacao) {
-                return await salvarAnaliseVazia(publicacaoId, publicacao.candidatoId, `Erro na análise: ${error.message}`);
-            }
-        } catch (saveError) {
-            console.error('❌ Erro ao salvar análise de erro:', saveError.message);
-        }
-        
-        throw error;
+        return null;
     }
 };
 
