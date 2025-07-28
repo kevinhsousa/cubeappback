@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash",
+    model: "gemini-2.0-flash",
     generationConfig: {
         temperature: 0.1,
         topK: 1,
@@ -62,7 +62,8 @@ export const analisarViabilidadeCandidato = async (candidatoId) => {
             const validacao = validarDadosParaScoreCube(candidato);
             if (!validacao.valido) {
                 console.log(`⚠️ Dados insuficientes para Score Cube: ${validacao.motivo}`);
-                return await salvarAnaliseIncompleta(candidatoId, validacao.motivo, 'SCORE_CUBE');
+                // Não salva nada, apenas retorna null
+                return null;
             }
             
             resultadoAnalise = await executarScoreCube(candidato);
@@ -72,7 +73,8 @@ export const analisarViabilidadeCandidato = async (candidatoId) => {
             const validacao = validarDadosParaAnaliseIA(candidato);
             if (!validacao.valido) {
                 console.log(`⚠️ Dados insuficientes para análise IA: ${validacao.motivo}`);
-                return await salvarAnaliseIncompleta(candidatoId, validacao.motivo, 'IA_QUALITATIVA');
+                // Não salva nada, apenas retorna null
+                return null;
             }
             
             resultadoAnalise = await executarAnaliseIA(candidato);
@@ -108,7 +110,8 @@ export const analisarViabilidadeCandidato = async (candidatoId) => {
 
     } catch (error) {
         console.error('❌ Erro na análise de viabilidade:', error.message);
-        throw error;
+        // Não salva nada, apenas retorna null
+        return null;
     }
 };
 
@@ -239,22 +242,11 @@ const executarScoreCube = async (candidato) => {
 
     } catch (error) {
         console.error('❌ Erro no Score Cube:', error.message);
-        return {
-            score: 50.0,
-            categoria: 'MEDIA',
-            tipo: 'INDETERMINADO',
-            confianca: 0.1,
-            justificativa: `Erro no cálculo Score Cube: ${error.message}`,
-            pontosFortes: ['Requer análise manual'],
-            pontosAtencao: ['Erro no processamento automático'],
-            dadosUsados: { erro: error.message, metodo: 'Score Cube v2.0' }
-        };
+        // Não salva nada, apenas retorna null
+        return null;
     }
 };
 
-/**
- * 🤖 EXECUTAR ANÁLISE IA (Municipal/Distrital/outros)
- */
 const executarAnaliseIA = async (candidato) => {
     try {
         console.log(`🤖 Executando análise IA para ${candidato.nome}`);
@@ -284,17 +276,94 @@ const executarAnaliseIA = async (candidato) => {
 
     } catch (error) {
         console.error('❌ Erro na análise IA:', error.message);
-        
-        return {
-            score: 50.0,
-            categoria: 'MEDIA',
-            confianca: 0.2,
-            justificativa: `Erro na análise IA: ${error.message}`,
-            pontosFortes: ['Presença digital ativa'],
-            pontosAtencao: ['Necessária análise manual', 'Erro no processamento IA'],
-            dadosQuantitativos: extrairDadosQuantitativos(candidato),
-            resumoSentimento: await obterResumoSentimento(candidato.id)
-        };
+        // Não salva nada, apenas retorna null
+        return null;
+    }
+};
+
+/**
+ * 🎯 ANÁLISE DE VIABILIDADE PARA CANDIDATOS EM LOTE
+ */
+export const analisarViabilidadeCandidatos = async (candidatoIds) => {
+    try {
+        console.log(`🔄 Iniciando análise em lote para ${candidatoIds.length} candidatos`);
+
+        const resultados = [];
+
+        for (const candidatoId of candidatoIds) {
+            const resultado = await analisarViabilidadeCandidato(candidatoId);
+            resultados.push(resultado);
+            
+            // Delay para não sobrecarregar o sistema
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+        console.log(`✅ Análise em lote concluída`);
+        return resultados;
+
+    } catch (error) {
+        console.error('❌ Erro na análise em lote:', error.message);
+        return null;
+    }
+};
+
+/**
+ * 🎯 EXECUTAR ANÁLISE AGENDADA (ex: diariamente)
+ */
+export const executarAnaliseAgendada = async () => {
+    try {
+        console.log('🕒 Executando análise de viabilidade agendada...');
+
+        // Buscar candidatos sem análise ou análise antiga (>24h)
+        const candidatosPendentes = await prisma.candidato.findMany({
+            where: {
+                ativo: true,
+                instagramHandle: { not: null },
+                followersCount: { gt: 0 },
+                // Não tem análise OU análise é antiga
+                OR: [
+                    { viabilidades: { none: {} } },
+                    {
+                        viabilidades: {
+                            every: {
+                                processadoEm: {
+                                    lt: new Date(Date.now() - 24 * 60 * 60 * 1000)
+                                }
+                            }
+                        }
+                    }
+                ]
+            },
+            include: {
+                cargoPretendido: { select: { nome: true } }
+            }
+        });
+
+        if (candidatosPendentes.length === 0) {
+            console.log('✅ Nenhum candidato pendente para análise');
+            return;
+        }
+
+        console.log(`📊 Encontrados ${candidatosPendentes.length} candidatos para processar`);
+
+        for (const candidato of candidatosPendentes) {
+            try {
+                console.log(`🔄 Processando: ${candidato.nome} (${candidato.cargoPretendido?.nome})`);
+                
+                await analisarViabilidadeCandidato(candidato.id);
+                
+                // Delay para não sobrecarregar o sistema
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+            } catch (error) {
+                console.error(`❌ Erro ao processar ${candidato.nome}:`, error.message);
+            }
+        }
+
+        console.log(`✅ Análise agendada concluída`);
+
+    } catch (error) {
+        console.error('❌ Erro na execução da análise agendada:', error.message);
     }
 };
 
