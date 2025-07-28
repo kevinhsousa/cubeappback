@@ -55,7 +55,8 @@ export const simularCenariosCandidato = async (candidatoId) => {
         const validacao = validarDadosParaSimulacao(candidato);
         if (!validacao.valido) {
             console.log(`⚠️ Dados insuficientes para simulação: ${validacao.motivo}`);
-            return await salvarSimulacaoIncompleta(candidatoId, validacao.motivo);
+            // Não salva nada, apenas retorna null
+            return null;
         }
 
         // Executar simulação conforme documento
@@ -85,7 +86,8 @@ export const simularCenariosCandidato = async (candidatoId) => {
 
     } catch (error) {
         console.error('❌ Erro na simulação de cenários:', error.message);
-        throw error;
+        // Não salva nada, apenas retorna null
+        return null;
     }
 };
 
