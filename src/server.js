@@ -55,7 +55,8 @@ app.use(morgan('combined'));
 app.use(cors({
   origin: [
     'http://localhost:5173', // desenvolvimento local
-    'https://cubeapp-omega.vercel.app', // produção Vercel
+    'https://cubeapp-omega.vercel.app', // produção Vercel,
+    'dashboard.cubeinteligencia.com.br',
     process.env.FRONTEND_URL || 'http://localhost:5173'
   ],
   credentials: true
