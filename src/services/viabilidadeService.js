@@ -256,6 +256,13 @@ const executarAnaliseIA = async (candidato) => {
 
         const dadosQuantitativos = extrairDadosQuantitativos(candidato);
         const resumoSentimento = await obterResumoSentimento(candidato.id);
+
+        // NOVA VALIDAÇÃO: só faz análise se tiver sentimento
+        if (!resumoSentimento || resumoSentimento.totalAnalises === 0) {
+            console.log('⚠️ Sem dados de sentimento suficientes, ignorando análise IA');
+            return null;
+        }
+
         const prompt = criarPromptAnaliseIA(candidato, dadosQuantitativos, resumoSentimento);
 
         console.log(`🤖 Enviando análise IA para Gemini...`);
