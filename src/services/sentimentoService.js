@@ -249,6 +249,7 @@ INSTRUÇÕES:
 2. Considere ironia, sarcasmo e críticas construtivas vs destrutivas
 3. Avalie o tom geral: apoio, crítica ou neutralidade
 4. Identifique temas principais mencionados
+5. Se não houver algum dado, tente analisar mesmo assim, se não fica muito vago.
 
 CLASSIFICAÇÃO:
 - POSITIVO: Apoio, elogios, concordância
