@@ -31,7 +31,8 @@ export const analisarViabilidadeCandidato = async (candidatoId) => {
         const candidato = await buscarDadosCompletosCandidato(candidatoId);
         
         if (!candidato) {
-            throw new Error('Candidato não encontrado');
+            console.log('❌ Candidato não encontrado');
+            return null;
         }
 
         // Verificar se já existe análise recente (menos de 24h)
@@ -58,32 +59,28 @@ export const analisarViabilidadeCandidato = async (candidatoId) => {
         let resultadoAnalise;
 
         if (isScoreCube) {
-            // ✅ SCORE CUBE para Federal/Estadual
+            // ✅ VALIDAÇÃO SIMPLES para Score Cube
             const validacao = validarDadosParaScoreCube(candidato);
             if (!validacao.valido) {
-                console.log(`⚠️ Dados insuficientes para Score Cube: ${validacao.motivo}`);
-                // Não salva nada, apenas retorna null
-                return null;
+                console.log(`⚠️ Score Cube - ${validacao.motivo} - ignorando candidato`);
+                return null; // Tchau, sem dados
             }
             
             resultadoAnalise = await executarScoreCube(candidato);
             if (!resultadoAnalise) {
-                // Em caso de erro na IA, não salva nada
                 return null;
             }
             
         } else {
-            // ✅ ANÁLISE IA para Municipal/Distrital/outros
+            // ✅ VALIDAÇÃO SIMPLES para IA
             const validacao = validarDadosParaAnaliseIA(candidato);
             if (!validacao.valido) {
-                console.log(`⚠️ Dados insuficientes para análise IA: ${validacao.motivo}`);
-                // Não salva nada, apenas retorna null
-                return null;
+                console.log(`⚠️ IA Qualitativa - ${validacao.motivo} - ignorando candidato`);
+                return null; // Tchau, sem dados
             }
             
             resultadoAnalise = await executarAnaliseIA(candidato);
             if (!resultadoAnalise) {
-                // Em caso de erro na IA, não salva nada
                 return null;
             }
         }
@@ -112,14 +109,12 @@ export const analisarViabilidadeCandidato = async (candidatoId) => {
         });
 
         console.log(`✅ Viabilidade analisada: ${resultadoAnalise.categoria} (${resultadoAnalise.score}%)`);
-        console.log(`📊 Método: ${isScoreCube ? 'Score Cube' : 'IA Qualitativa'} | Confiança: ${resultadoAnalise.confianca}`);
         
         return novaAnalise;
 
     } catch (error) {
         console.error('❌ Erro na análise de viabilidade:', error.message);
-        // Não salva nada, apenas retorna null
-        return null;
+        return null; // Se der erro, tchau
     }
 };
 
@@ -379,67 +374,68 @@ export const executarAnaliseAgendada = async () => {
  * ✅ Validações de dados
  */
 const validarDadosParaScoreCube = (candidato) => {
-    const problemas = [];
-
-    if (!candidato.cargoPretendido?.nome) {
-        problemas.push('Cargo pretendido não definido');
-    }
-
-    if (!candidato.followersCount || candidato.followersCount === 0) {
-        problemas.push('Sem dados de seguidores do Instagram');
-    }
-
+    // Se não tem publicações, tchau
     if (!candidato.publicacoes || candidato.publicacoes.length === 0) {
-        problemas.push('Sem publicações no Instagram para calcular engajamento');
+        return { valido: false, motivo: 'Sem publicações' };
     }
 
-    // Para Score Cube, não é obrigatório ter votosNecessarios - podemos calcular
-    
-    return {
-        valido: problemas.length === 0,
-        motivo: problemas.join('; ') || 'Dados suficientes para Score Cube'
-    };
+    // Se não tem seguidores, tchau
+    if (!candidato.followersCount || candidato.followersCount === 0) {
+        return { valido: false, motivo: 'Sem seguidores' };
+    }
+
+    // Se não tem cargo, tchau
+    if (!candidato.cargoPretendido?.nome) {
+        return { valido: false, motivo: 'Sem cargo definido' };
+    }
+
+    return { valido: true, motivo: 'OK' };
 };
 
 const validarDadosParaAnaliseIA = (candidato) => {
-    const problemas = [];
-
-    if (!candidato.cargoPretendido?.nome) {
-        problemas.push('Cargo pretendido não definido');
+    // Se não tem publicações, tchau
+    if (!candidato.publicacoes || candidato.publicacoes.length === 0) {
+        return { valido: false, motivo: 'Sem publicações' };
     }
 
+    // Se não tem seguidores, tchau
     if (!candidato.followersCount || candidato.followersCount === 0) {
-        problemas.push('Sem dados de seguidores do Instagram');
+        return { valido: false, motivo: 'Sem seguidores' };
     }
 
-    return {
-        valido: problemas.length === 0,
-        motivo: problemas.join('; ') || 'Dados suficientes para análise IA'
-    };
+    // Se não tem cargo, tchau
+    if (!candidato.cargoPretendido?.nome) {
+        return { valido: false, motivo: 'Sem cargo definido' };
+    }
+
+    return { valido: true, motivo: 'OK' };
 };
 
 /**
  * 📊 Calcular engajamento médio das publicações
  */
 const calcularEngajamentoMedio = (candidato) => {
+    // Se não tem publicações, retorna 0
     if (!candidato.publicacoes || candidato.publicacoes.length === 0) {
         return 0;
     }
 
-    const publicacoesValidas = candidato.publicacoes.filter(p => 
+    // Filtra só as que têm likes e comments
+    const publicacoesComDados = candidato.publicacoes.filter(p => 
         p.likesCount !== null && p.commentsCount !== null &&
         p.likesCount >= 0 && p.commentsCount >= 0
     );
 
-    if (publicacoesValidas.length === 0) {
+    // Se nenhuma tem dados, retorna 0
+    if (publicacoesComDados.length === 0) {
         return 0;
     }
 
-    const totalEngajamento = publicacoesValidas.reduce((acc, p) => 
+    const totalEngajamento = publicacoesComDados.reduce((acc, p) => 
         acc + (p.likesCount || 0) + (p.commentsCount || 0), 0
     );
 
-    return totalEngajamento / publicacoesValidas.length;
+    return totalEngajamento / publicacoesComDados.length;
 };
 
 /**
@@ -643,6 +639,12 @@ const parseInsightsIA = (text) => {
  * 📝 Criar prompt para análise IA (Municipal/outros)
  */
 const criarPromptAnaliseIA = (candidato, dadosQuantitativos, resumoSentimento) => {
+    // Se não tem dados de sentimento, menciona isso no prompt
+    const sentimentoTexto = resumoSentimento.totalAnalises > 0 
+        ? `SENTIMENTO: ${resumoSentimento.totalAnalises} análises
+Positivo: ${resumoSentimento.distribuicao?.positivo || 0} | Negativo: ${resumoSentimento.distribuicao?.negativo || 0} | Neutro: ${resumoSentimento.distribuicao?.neutro || 0}`
+        : 'SENTIMENTO: Não disponível (considere engajamento apenas)';
+
     return `Analista político brasileiro: avalie a viabilidade eleitoral considerando o contexto político atual.
 
 CANDIDATO: ${candidato.nome} (@${candidato.instagramHandle})
@@ -658,8 +660,7 @@ DADOS MUNICIPAIS:
 - Distância para Vitória: ${dadosQuantitativos.distanciaVitoria?.toLocaleString() || 'N/A'} votos
 ` : ''}
 
-SENTIMENTO: ${resumoSentimento.totalAnalises} análises
-Positivo: ${resumoSentimento.distribuicao?.positivo || 0} | Negativo: ${resumoSentimento.distribuicao?.negativo || 0} | Neutro: ${resumoSentimento.distribuicao?.neutro || 0}
+${sentimentoTexto}
 
 Avalie considerando cenário político brasileiro 2024-2026.
 
@@ -695,8 +696,13 @@ const obterResumoSentimento = async (candidatoId) => {
             }
         });
 
+        // Se não tem análises, retorna dados vazios (mas não quebra)
         if (analises.length === 0) {
-            return { totalAnalises: 0, scoreMedio: 0, distribuicao: { positivo: 0, negativo: 0, neutro: 0 } };
+            return { 
+                totalAnalises: 0, 
+                scoreMedio: 0, 
+                distribuicao: { positivo: 0, negativo: 0, neutro: 0 }
+            };
         }
 
         const distribuicao = {
@@ -714,7 +720,12 @@ const obterResumoSentimento = async (candidatoId) => {
         };
 
     } catch (error) {
-        return { totalAnalises: 0, scoreMedio: 0, distribuicao: { positivo: 0, negativo: 0, neutro: 0 } };
+        // Se der erro, retorna dados vazios
+        return { 
+            totalAnalises: 0, 
+            scoreMedio: 0, 
+            distribuicao: { positivo: 0, negativo: 0, neutro: 0 }
+        };
     }
 };
 
