@@ -22,21 +22,6 @@ export const simularCenariosCandidato = async (candidatoId) => {
             throw new Error('Candidato não encontrado');
         }
 
-        // Verificar se já existe simulação recente (menos de 24h)
-        const simulacaoRecente = await prisma.simuladorCenarios.findFirst({
-            where: {
-                candidatoId,
-                processadoEm: {
-                    gte: new Date(Date.now() - 24 * 60 * 60 * 1000)
-                }
-            }
-        });
-
-        if (simulacaoRecente) {
-            console.log('✅ Simulação de cenários recente já existe');
-            return simulacaoRecente;
-        }
-
         // Validar se é Federal ou Estadual
         const cargoPretendido = candidato.cargoPretendido?.nivel?.toLowerCase() || '';
         const isFederalEstadualPretendido = cargoPretendido.includes('federal') || cargoPretendido.includes('estadual');
@@ -62,31 +47,60 @@ export const simularCenariosCandidato = async (candidatoId) => {
         // Executar simulação conforme documento
         const resultadoSimulacao = executarSimulacaoConfomeDocumento(candidato);
 
-        // Salvar simulação no banco
-        const novaSimulacao = await prisma.simuladorCenarios.create({
-            data: {
-                candidatoId,
-                categoria: resultadoSimulacao.categoria,
-                tipoCanditato: resultadoSimulacao.tipoCanditato,
-                scoreCube: resultadoSimulacao.scoreCube,
-                gapEleitoral: resultadoSimulacao.gapEleitoral,
-                deficitEngajamento: resultadoSimulacao.deficitEngajamento,
-                incerteza: resultadoSimulacao.incerteza,
-                cenarioOtimista: resultadoSimulacao.cenarioOtimista,
-                cenarioRealista: resultadoSimulacao.cenarioRealista,
-                cenarioPessimista: resultadoSimulacao.cenarioPessimista,
-                parametrosCalculo: resultadoSimulacao.parametrosCalculo,
-                versaoAlgoritmo: 'v1.0'
-            }
+        // Verificar se já existe simulação para este candidato
+        const simulacaoExistente = await prisma.simuladorCenarios.findFirst({
+            where: { candidatoId }
         });
 
-        console.log(`✅ Cenários simulados: O:${resultadoSimulacao.cenarioOtimista}% R:${resultadoSimulacao.cenarioRealista}% P:${resultadoSimulacao.cenarioPessimista}%`);
+        let simulacao;
+
+        if (simulacaoExistente) {
+            // Atualizar simulação existente
+            console.log('🔄 Atualizando simulação existente em vez de criar nova');
+            simulacao = await prisma.simuladorCenarios.update({
+                where: { id: simulacaoExistente.id },
+                data: {
+                    categoria: resultadoSimulacao.categoria,
+                    tipoCanditato: resultadoSimulacao.tipoCanditato,
+                    scoreCube: resultadoSimulacao.scoreCube,
+                    gapEleitoral: resultadoSimulacao.gapEleitoral,
+                    deficitEngajamento: resultadoSimulacao.deficitEngajamento,
+                    incerteza: resultadoSimulacao.incerteza,
+                    cenarioOtimista: resultadoSimulacao.cenarioOtimista,
+                    cenarioRealista: resultadoSimulacao.cenarioRealista,
+                    cenarioPessimista: resultadoSimulacao.cenarioPessimista,
+                    parametrosCalculo: resultadoSimulacao.parametrosCalculo,
+                    processadoEm: new Date(),
+                    versaoAlgoritmo: 'v1.0'
+                }
+            });
+        } else {
+            // Criar nova simulação apenas se não existir nenhuma
+            console.log('🆕 Criando primeira simulação para o candidato');
+            simulacao = await prisma.simuladorCenarios.create({
+                data: {
+                    candidatoId,
+                    categoria: resultadoSimulacao.categoria,
+                    tipoCanditato: resultadoSimulacao.tipoCanditato,
+                    scoreCube: resultadoSimulacao.scoreCube,
+                    gapEleitoral: resultadoSimulacao.gapEleitoral,
+                    deficitEngajamento: resultadoSimulacao.deficitEngajamento,
+                    incerteza: resultadoSimulacao.incerteza,
+                    cenarioOtimista: resultadoSimulacao.cenarioOtimista,
+                    cenarioRealista: resultadoSimulacao.cenarioRealista,
+                    cenarioPessimista: resultadoSimulacao.cenarioPessimista,
+                    parametrosCalculo: resultadoSimulacao.parametrosCalculo,
+                    versaoAlgoritmo: 'v1.0'
+                }
+            });
+        }
+
+        console.log(`✅ Cenários calculados: O:${resultadoSimulacao.cenarioOtimista}% R:${resultadoSimulacao.cenarioRealista}% P:${resultadoSimulacao.cenarioPessimista}%`);
         
-        return novaSimulacao;
+        return simulacao;
 
     } catch (error) {
         console.error('❌ Erro na simulação de cenários:', error.message);
-        // Não salva nada, apenas retorna null
         return null;
     }
 };
