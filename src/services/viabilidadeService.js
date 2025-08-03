@@ -46,11 +46,11 @@ export const analisarViabilidadeCandidato = async (candidatoId) => {
         });
 
         if (analiseRecente) {
-            console.log('✅ Análise de viabilidade recente já existe');
+            console.log(' Análise de viabilidade recente já existe');
             return analiseRecente;
         }
 
-        // ✅ DETERMINAR MÉTODO DE ANÁLISE baseado no cargo pretendido
+        //  DETERMINAR MÉTODO DE ANÁLISE baseado no cargo pretendido
         const cargoPretendido = candidato.cargoPretendido?.nome?.toLowerCase() || '';
         const isScoreCube = cargoPretendido.includes('federal') || cargoPretendido.includes('estadual');
         
@@ -59,7 +59,7 @@ export const analisarViabilidadeCandidato = async (candidatoId) => {
         let resultadoAnalise;
 
         if (isScoreCube) {
-            // ✅ VALIDAÇÃO SIMPLES para Score Cube
+            //  VALIDAÇÃO SIMPLES para Score Cube
             const validacao = validarDadosParaScoreCube(candidato);
             if (!validacao.valido) {
                 console.log(`⚠️ Score Cube - ${validacao.motivo} - ignorando candidato`);
@@ -72,7 +72,7 @@ export const analisarViabilidadeCandidato = async (candidatoId) => {
             }
             
         } else {
-            // ✅ VALIDAÇÃO SIMPLES para IA
+            //  VALIDAÇÃO SIMPLES para IA
             const validacao = validarDadosParaAnaliseIA(candidato);
             if (!validacao.valido) {
                 console.log(`⚠️ IA Qualitativa - ${validacao.motivo} - ignorando candidato`);
@@ -108,7 +108,7 @@ export const analisarViabilidadeCandidato = async (candidatoId) => {
             data: { pontuacaoViabilidade: resultadoAnalise.score }
         });
 
-        console.log(`✅ Viabilidade analisada: ${resultadoAnalise.categoria} (${resultadoAnalise.score}%)`);
+        console.log(` Viabilidade analisada: ${resultadoAnalise.categoria} (${resultadoAnalise.score}%)`);
         
         return novaAnalise;
 
@@ -240,7 +240,7 @@ const executarScoreCube = async (candidato) => {
             resumoSentimento: contextoIA.resumoSentimento
         };
 
-        console.log(`✅ Score Cube calculado: ${scoreFinal}% (${categoria}) - ${tipoCanditato}`);
+        console.log(` Score Cube calculado: ${scoreFinal}% (${categoria}) - ${tipoCanditato}`);
         return resultado;
 
     } catch (error) {
@@ -308,7 +308,7 @@ export const analisarViabilidadeCandidatos = async (candidatoIds) => {
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
-        console.log(`✅ Análise em lote concluída`);
+        console.log(` Análise em lote concluída`);
         return resultados;
 
     } catch (error) {
@@ -350,7 +350,7 @@ export const executarAnaliseAgendada = async () => {
         });
 
         if (candidatosPendentes.length === 0) {
-            console.log('✅ Nenhum candidato pendente para análise');
+            console.log(' Nenhum candidato pendente para análise');
             return;
         }
 
@@ -370,7 +370,7 @@ export const executarAnaliseAgendada = async () => {
             }
         }
 
-        console.log(`✅ Análise agendada concluída`);
+        console.log(` Análise agendada concluída`);
 
     } catch (error) {
         console.error('❌ Erro na execução da análise agendada:', error.message);
@@ -378,7 +378,7 @@ export const executarAnaliseAgendada = async () => {
 };
 
 /**
- * ✅ Validações de dados
+ *  Validações de dados
  */
 const validarDadosParaScoreCube = (candidato) => {
     // Se não tem publicações, tchau
@@ -979,7 +979,7 @@ export const processarViabilidadesPendentes = async () => {
         ];
 
         if (todosCandidatos.length === 0) {
-            console.log('✅ Nenhum candidato pendente para análise de viabilidade');
+            console.log(' Nenhum candidato pendente para análise de viabilidade');
             return { processadas: 0, erros: 0 };
         }
 
@@ -1011,7 +1011,7 @@ export const processarViabilidadesPendentes = async () => {
             }
         }
 
-        console.log(`✅ Processamento concluído: ${processadas} sucessos, ${erros} erros`);
+        console.log(` Processamento concluído: ${processadas} sucessos, ${erros} erros`);
         
         if (processadas > 0) {
             console.log(`📊 Score Cube v2.0: Implementação conforme documento oficial`);

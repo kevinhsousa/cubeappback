@@ -45,7 +45,7 @@ export const atualizarDadosInstagram = async (candidatoId, dadosApify) => {
         try {
             console.log(`🎯 Iniciando análise de viabilidade automaticamente...`);
             await analisarViabilidadeCandidato(candidatoId);
-            console.log(`✅ Análise de viabilidade concluída!`);
+            console.log(` Análise de viabilidade concluída!`);
         } catch (viabilidadeError) {
             console.error('❌ Erro na análise de viabilidade:', viabilidadeError.message);
             // Não quebrar o fluxo principal se a análise falhar
@@ -58,10 +58,10 @@ export const atualizarDadosInstagram = async (candidatoId, dadosApify) => {
     }
 };
 
-// 🆕 NOVA FUNÇÃO: Salvar publicações
+//  ATUALIZAR FUNÇÃO: Salvar/Atualizar publicações
 const salvarPublicacoes = async (candidatoId, posts) => {
     try {
-        console.log(`📄 Salvando ${posts.length} publicações...`);
+        console.log(`📄 Salvando/Atualizando ${posts.length} publicações...`);
         
         for (const post of posts) {
             try {
@@ -71,18 +71,31 @@ const salvarPublicacoes = async (candidatoId, posts) => {
                 });
 
                 if (existePublicacao) {
-                    console.log(`📄 Post ${post.shortCode} já existe, atualizando...`);
+                    console.log(`📄 Post ${post.shortCode} já existe, atualizando contadores...`);
                     
-                    // Atualizar publicação existente
+                    //  SEMPRE ATUALIZAR publicação existente (novos likes/comentários)
                     await prisma.publicacoes.update({
                         where: { instagramPostId: post.id },
                         data: {
                             commentsCount: post.commentsCount,
                             likesCount: post.likesCount,
                             videoViewCount: post.videoViewCount || null,
-                            atualizadoEm: new Date()
+                            atualizadoEm: new Date(),
+                            //  RESETAR flag de processamento se houve mudança significativa
+                            ...(post.commentsCount > (existePublicacao.commentsCount || 0) && {
+                                // Marcar para reprocessamento se ganhou comentários
+                                comentariosProcessadosEm: null
+                            })
                         }
                     });
+
+                    //  LOG das mudanças
+                    const diferencaComentarios = post.commentsCount - (existePublicacao.commentsCount || 0);
+                    const diferencaLikes = post.likesCount - (existePublicacao.likesCount || 0);
+                    
+                    if (diferencaComentarios > 0 || diferencaLikes > 0) {
+                        console.log(`📈 Post ${post.shortCode}: +${diferencaComentarios} comentários, +${diferencaLikes} likes`);
+                    }
                 } else {
                     console.log(`📄 Criando nova publicação: ${post.shortCode}`);
                     
@@ -124,7 +137,7 @@ const salvarPublicacoes = async (candidatoId, posts) => {
             }
         }
         
-        console.log(`✅ Publicações processadas com sucesso!`);
+        console.log(` Publicações processadas com sucesso!`);
     } catch (error) {
         console.error('❌ Erro ao salvar publicações:', error.message);
     }
@@ -178,12 +191,12 @@ export const buscarProximoCandidatoParaScraping = async () => {
     try {
         const agora = new Date();
         const doisDiasAtras = new Date();
-        doisDiasAtras.setDate(doisDiasAtras.getDate() - 2);
+        doisDiasAtras.setDate(doisDiasAtras.getDate() - 1);
 
         // Busca candidatos que:
         // 1. Têm instagramHandle preenchido
         // 2. Estão ativos  
-        // 3. Não foram processados nos últimos 2 dias OU nunca foram processados
+        // 3. Não foram processados nos últimos 1 dia OU nunca foram processados
         const candidato = await prisma.candidato.findFirst({
             where: {
                 AND: [
@@ -225,7 +238,7 @@ export const buscarProximoCandidatoParaScraping = async () => {
 export const obterEstatisticasProcessamento = async () => {
     try {
         const doisDiasAtras = new Date();
-        doisDiasAtras.setDate(doisDiasAtras.getDate() - 2);
+        doisDiasAtras.setDate(doisDiasAtras.getDate() - 1);
 
         const stats = await prisma.candidato.aggregate({
             where: {

@@ -1,6 +1,6 @@
 import express from 'express';
 import macrorregiaoController from '../controllers/macrorregiaoController.js';
-import { authenticateToken } from '../middleware/auth.js'; // ✅ USAR authenticateToken como nos outros
+import { authenticateToken } from '../middleware/auth.js'; //  USAR authenticateToken como nos outros
 
 const router = express.Router();
 

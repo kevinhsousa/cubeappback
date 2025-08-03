@@ -27,7 +27,7 @@ const macrorregiaoController = {
     }
   },
 
-  // ✅ CORRIGIDO - Alias para compatibilidade
+  //  CORRIGIDO - Alias para compatibilidade
   async index(req, res) {
     return macrorregiaoController.listarMacrorregioes(req, res);
   }

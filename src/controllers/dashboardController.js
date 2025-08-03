@@ -318,7 +318,7 @@ async function calcularViabilidade(candidatoIds = null, cargoIds = null, cargoPr
         // Usar dados reais da IA com filtros
         const viabilidadeReal = await obterEstatisticasViabilidade(candidatoIds, cargoIds, cargoPretendidoIds, mandatos, redutosOrigem, macrorregiaoIds);
         
-        // ✅ RETORNAR exatamente o que vem do service
+        //  RETORNAR exatamente o que vem do service
         return viabilidadeReal;
         
     } catch (error) {

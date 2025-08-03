@@ -151,7 +151,7 @@ const show = async (req, res, next) => {
         cargo: {
           select: { id: true, nome: true, nivel: true }
         },
-        cargoPretendido: { // ✅ NOVO
+        cargoPretendido: { //  NOVO
           select: { id: true, nome: true, nivel: true }
         },
         macrorregiao: {
@@ -239,11 +239,11 @@ const store = async (req, res, next) => {
         votosUltimaEleicao: votosUltimaEleicao ? parseInt(votosUltimaEleicao) : null,
         populacaoCidade: populacaoCidade ? parseInt(populacaoCidade) : null,
         votosValidos: votosValidos ? parseInt(votosValidos) : null,
-        cargoPretendidoId: cargoPretendidoId || null, // ✅ MUDANÇA
+        cargoPretendidoId: cargoPretendidoId || null, //  MUDANÇA
         instagramHandle: instagramHandle?.trim() || null,
         observacoes: observacoes?.trim() || null,
-        urlRss: urlRss?.trim() || null, // ✅ NOVO
-        urlDrive: urlDrive?.trim() || null, // ✅ NOVO
+        urlRss: urlRss?.trim() || null, //  NOVO
+        urlDrive: urlDrive?.trim() || null, //  NOVO
         ativo: true,
         criadoPor: req.user.id
       },
@@ -254,7 +254,7 @@ const store = async (req, res, next) => {
         cargo: {
           select: { id: true, nome: true, nivel: true }
         },
-        cargoPretendido: { // ✅ NOVO
+        cargoPretendido: { //  NOVO
           select: { id: true, nome: true, nivel: true }
         },
         macrorregiao: {
@@ -287,7 +287,7 @@ const update = async (req, res, next) => {
       votosUltimaEleicao,
       populacaoCidade,
       votosValidos,
-      cargoPretendidoId, // ✅ MUDANÇA
+      cargoPretendidoId, //  MUDANÇA
       instagramHandle,
       observacoes,
       urlRss,
@@ -352,7 +352,7 @@ const update = async (req, res, next) => {
         ...(votosValidos !== undefined && { 
           votosValidos: votosValidos ? parseInt(votosValidos) : null 
         }),
-        ...(cargoPretendidoId !== undefined && { cargoPretendidoId: cargoPretendidoId || null }), // ✅ MUDANÇA
+        ...(cargoPretendidoId !== undefined && { cargoPretendidoId: cargoPretendidoId || null }), //  MUDANÇA
         ...(instagramHandle !== undefined && { instagramHandle: instagramHandle?.trim() || null }),
         ...(observacoes !== undefined && { observacoes: observacoes?.trim() || null }),
         ...(urlRss !== undefined && { urlRss: urlRss?.trim() || null }),
@@ -365,7 +365,7 @@ const update = async (req, res, next) => {
         cargo: {
           select: { id: true, nome: true, nivel: true }
         },
-        cargoPretendido: { // ✅ NOVO
+        cargoPretendido: { //  NOVO
           select: { id: true, nome: true, nivel: true }
         },
         macrorregiao: {

@@ -45,7 +45,7 @@ const app = express();
 const prisma = new PrismaClient();
 
 // Iniciar cronjobs automáticos
-iniciarCronjobScraping(); 
+// iniciarCronjobScraping(); 
 
 const PORT = process.env.PORT || 10000;
 

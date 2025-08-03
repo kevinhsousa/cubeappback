@@ -6,7 +6,7 @@ const listarCargos = async (req, res) => {
   try {
     const { search } = req.query;
     
-    const where = { ativo: true }; // ✅ ADICIONAR filtro de ativo
+    const where = { ativo: true }; //  ADICIONAR filtro de ativo
     
     if (search) {
       where.OR = [
@@ -23,7 +23,7 @@ const listarCargos = async (req, res) => {
       ]
     });
 
-    // ✅ FORMATO PADRÃO da API
+    //  FORMATO PADRÃO da API
     res.json({
       success: true,
       data: cargos
@@ -44,7 +44,7 @@ const buscarCargoPorId = async (req, res) => {
     const { id } = req.params;
     
     const cargo = await prisma.cargo.findUnique({
-      where: { id } // ✅ Não usar parseInt
+      where: { id } //  Não usar parseInt
     });
 
     if (!cargo) {
@@ -135,7 +135,7 @@ const atualizarCargo = async (req, res) => {
 
     // Verificar se cargo existe
     const cargoExistente = await prisma.cargo.findUnique({
-      where: { id } // ✅ ID é string (cuid), não parseInt
+      where: { id } //  ID é string (cuid), não parseInt
     });
 
     if (!cargoExistente) {
@@ -200,17 +200,17 @@ const deletarCargo = async (req, res) => {
 
     // Verificar se cargo existe
     const cargoExistente = await prisma.cargo.findUnique({
-      where: { id }  // ✅ ID é string (cuid), não parseInt
+      where: { id }  //  ID é string (cuid), não parseInt
     });
 
     if (!cargoExistente) {
       return res.status(404).json({ error: 'Cargo não encontrado' });
     }
 
-    // ✅ CORRIGIDO - verificar candidatos usando cargoId
+    //  CORRIGIDO - verificar candidatos usando cargoId
     const candidatosComCargo = await prisma.candidato.count({
       where: {
-        cargoId: id  // ✅ Usar cargoId em vez de cargoAtual/cargoPretendido
+        cargoId: id  //  Usar cargoId em vez de cargoAtual/cargoPretendido
       }
     });
 

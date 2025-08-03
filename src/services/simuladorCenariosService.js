@@ -95,7 +95,7 @@ export const simularCenariosCandidato = async (candidatoId) => {
             });
         }
 
-        console.log(`✅ Cenários calculados: O:${resultadoSimulacao.cenarioOtimista}% R:${resultadoSimulacao.cenarioRealista}% P:${resultadoSimulacao.cenarioPessimista}%`);
+        console.log(` Cenários calculados: O:${resultadoSimulacao.cenarioOtimista}% R:${resultadoSimulacao.cenarioRealista}% P:${resultadoSimulacao.cenarioPessimista}%`);
         
         return simulacao;
 
@@ -218,7 +218,7 @@ const calcularEngajamentoMedio = (candidato) => {
 };
 
 /**
- * ✅ Validar dados necessários para simulação
+ *  Validar dados necessários para simulação
  */
 const validarDadosParaSimulacao = (candidato) => {
     const problemas = [];
@@ -381,9 +381,9 @@ export const processarSimulacoesPendentes = async () => {
                 },
                 // Não tem simulação OU simulação é antiga (>24h)
                 OR: [
-                    { simulacoesCenarios: { none: {} } }, // ✅ CORRIGIDO: era 'cenarios'
+                    { simulacoesCenarios: { none: {} } }, //  CORRIGIDO: era 'cenarios'
                     {
-                        simulacoesCenarios: { // ✅ CORRIGIDO: era 'cenarios'
+                        simulacoesCenarios: { //  CORRIGIDO: era 'cenarios'
                             every: {
                                 processadoEm: {
                                     lt: new Date(Date.now() - 24 * 60 * 60 * 1000)
@@ -400,7 +400,7 @@ export const processarSimulacoesPendentes = async () => {
         });
 
         if (candidatosPendentes.length === 0) {
-            console.log('✅ Nenhum candidato pendente para simulação de cenários');
+            console.log(' Nenhum candidato pendente para simulação de cenários');
             return { processados: 0, erros: 0 };
         }
 
@@ -427,7 +427,7 @@ export const processarSimulacoesPendentes = async () => {
             }
         }
 
-        console.log(`✅ Simulações concluídas: ${processados} sucessos, ${erros} erros`);
+        console.log(` Simulações concluídas: ${processados} sucessos, ${erros} erros`);
         return { processados, erros };
 
     } catch (error) {

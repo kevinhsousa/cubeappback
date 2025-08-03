@@ -90,7 +90,7 @@ async function main() {
 
     console.log('👤 Admin criado:', admin.email);
 
-    console.log('✅ Seed executado com sucesso!');
+    console.log(' Seed executado com sucesso!');
     console.log('📊 Dados criados:');
     console.log(`   - ${macrorregioes.length} macrorregiões`);
     console.log(`   - ${cargos.length} cargos`);

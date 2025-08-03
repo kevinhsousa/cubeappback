@@ -9,7 +9,8 @@ import {
 } from '../services/candidatoService.js';
 import { 
     processarProximoCandidatoComentarios,
-    obterEstatisticasComentarios 
+    obterEstatisticasComentarios,
+    reprocessarPublicacoesComPotencial //  Nova função
 } from '../services/comentariosService.js';
 import { 
     processarAnalisesSentimentoPendentes 
@@ -41,7 +42,7 @@ const executarScraping = async () => {
         const candidato = await buscarProximoCandidatoParaScraping();
         
         if (!candidato) {
-            console.log('✅ Nenhum candidato precisa ser processado no momento.');
+            console.log(' Nenhum candidato precisa ser processado no momento.');
             return;
         }
 
@@ -52,7 +53,7 @@ const executarScraping = async () => {
         
         await atualizarDadosInstagram(candidato.id, dadosApify);
         
-        console.log(`✅ ${candidato.nome} processado com sucesso!`);
+        console.log(` ${candidato.nome} processado com sucesso!`);
         console.log(`📈 Seguidores: ${dadosApify.followersCount}`);
         
         const statsAtualizadas = await obterEstatisticasProcessamento();
@@ -76,22 +77,53 @@ const executarScrapingComentarios = async () => {
             console.log(`   Total de publicações: ${stats.totalPublicacoes}`);
             console.log(`   Com comentários: ${stats.publicacoesComComentarios}`);
             console.log(`   Pendentes: ${stats.publicacoesPendentes}`);
-            console.log(`   Total comentários: ${stats.totalComentarios}`);
+            console.log(`   Com potencial reprocessamento: ${stats.publicacoesComPotencial}`);
+            console.log(`   Comentários salvos: ${stats.totalComentariosSalvos}/${stats.totalComentariosDisponiveis} (${stats.eficienciaColeta}%)`);
             console.log(`   Progresso: ${stats.percentualCompleto}%`);
         }
         
+        //  Processar próxima publicação (incluindo reprocessamento automático)
         const resultado = await processarProximoCandidatoComentarios();
         
         if (!resultado) {
-            console.log('✅ Nenhuma publicação pendente para comentários');
+            console.log(' Nenhuma publicação pendente para comentários');
+            
+            //  Se não há pendentes, tentar reprocessamento
+            if (stats && stats.publicacoesComPotencial > 0) {
+                console.log('🔄 Iniciando reprocessamento de publicações com potencial...');
+                await reprocessarPublicacoesComPotencial();
+            }
             return;
         }
 
-        console.log(`✅ Comentários processados para ${resultado.publicacao.candidato}`);
-        console.log(`💬 ${resultado.comentariosSalvos} novos comentários salvos`);
+        console.log(` Comentários processados para ${resultado.publicacao.candidato}`);
+        console.log(`💬 ${resultado.comentariosSalvos} novos comentários salvos (${resultado.totalComentarios} total)`);
+        
+        if (resultado.analiseSentimentoRealizada) {
+            console.log(`🧠 Análise de sentimento realizada automaticamente`);
+        }
         
     } catch (error) {
         console.error('❌ Erro no cronjob de comentários:', error.message);
+    }
+};
+
+//  NOVA FUNÇÃO: Cronjob específico para reprocessamento (executar menos frequentemente)
+const executarReprocessamentoComentarios = async () => {
+    try {
+        console.log('\n🔄 Iniciando reprocessamento de publicações...');
+        
+        const resultado = await reprocessarPublicacoesComPotencial();
+        
+        if (resultado.processadas === 0) {
+            console.log(' Nenhuma publicação para reprocessar');
+            return;
+        }
+
+        console.log(` Reprocessamento concluído: ${resultado.processadas} publicações atualizadas`);
+        
+    } catch (error) {
+        console.error('❌ Erro no reprocessamento:', error.message);
     }
 };
 
@@ -100,7 +132,7 @@ const executarAnalisesSentimento = async () => {
     try {
         console.log('\n🧠 Iniciando análises de sentimento...');
         
-        // ✅ Verificar se há análises já em progresso (evitar overlaps)
+        //  Verificar se há análises já em progresso (evitar overlaps)
         const emAndamento = global.sentimentoEmAndamento || false;
         if (emAndamento) {
             console.log('⏳ Análise de sentimento já em andamento, pulando...');
@@ -113,13 +145,13 @@ const executarAnalisesSentimento = async () => {
             const resultado = await processarAnalisesSentimentoPendentes();
             
             if (resultado.processadas === 0) {
-                console.log('✅ Nenhuma análise de sentimento pendente');
+                console.log(' Nenhuma análise de sentimento pendente');
                 return;
             }
 
-            console.log(`✅ Análises de sentimento: ${resultado.processadas} processadas, ${resultado.erros} erros`);
+            console.log(` Análises de sentimento: ${resultado.processadas} processadas, ${resultado.erros} erros`);
             
-            // ✅ Log adicional se muitos erros
+            //  Log adicional se muitos erros
             if (resultado.erros > 0) {
                 const taxaErro = (resultado.erros / (resultado.processadas + resultado.erros)) * 100;
                 if (taxaErro > 30) {
@@ -142,7 +174,7 @@ const executarAnalisesViabilidade = async () => {
     try {
         console.log('\n🎯 Iniciando análises de viabilidade...');
         
-        // ✅ Verificar se há análises já em progresso
+        //  Verificar se há análises já em progresso
         const emAndamento = global.viabilidadeEmAndamento || false;
         if (emAndamento) {
             console.log('⏳ Análise de viabilidade já em andamento, pulando...');
@@ -155,18 +187,18 @@ const executarAnalisesViabilidade = async () => {
             const resultado = await processarViabilidadesPendentes();
             
             if (resultado.processadas === 0) {
-                console.log('✅ Nenhuma análise de viabilidade pendente');
+                console.log(' Nenhuma análise de viabilidade pendente');
                 return;
             }
 
-            console.log(`✅ Análises de viabilidade: ${resultado.processadas} processadas, ${resultado.erros} erros`);
+            console.log(` Análises de viabilidade: ${resultado.processadas} processadas, ${resultado.erros} erros`);
             
-            // ✅ Log específico para Score Cube
+            //  Log específico para Score Cube
             if (resultado.processadas > 0) {
                 console.log(`📊 Score Cube v2.0 aplicado para candidatos Federal/Estadual`);
             }
 
-            // ✅ Alertar sobre dados insuficientes
+            //  Alertar sobre dados insuficientes
             if (resultado.erros > 0) {
                 console.warn(`⚠️ Alguns candidatos podem ter dados insuficientes para análise Score Cube`);
                 console.warn(`   Verifique: cargo pretendido, votos necessários, dados Instagram`);
@@ -198,11 +230,11 @@ const executarSimulacoesCenarios = async () => {
             const resultado = await processarSimulacoesPendentes();
             
             if (resultado.processados === 0) {
-                console.log('✅ Nenhuma simulação de cenários pendente');
+                console.log(' Nenhuma simulação de cenários pendente');
                 return;
             }
 
-            console.log(`✅ Simulações de cenários: ${resultado.processados} processadas, ${resultado.erros} erros`);
+            console.log(` Simulações de cenários: ${resultado.processados} processadas, ${resultado.erros} erros`);
             
         } finally {
             global.cenariosEmAndamento = false;
@@ -228,7 +260,7 @@ export const executarScrapingPorCandidato = async (candidatoId) => {
         
         await atualizarDadosInstagram(candidato.id, dadosApify);
         
-        console.log(`✅ ${candidato.nome} processado com sucesso!`);
+        console.log(` ${candidato.nome} processado com sucesso!`);
         console.log(`📈 Seguidores: ${dadosApify.followersCount}`);
         
         return {
@@ -262,12 +294,16 @@ export const iniciarCronjobScraping = () => {
     // 💬 Coleta de comentários - a cada 5 minutos
     cron.schedule('*/5 * * * *', executarScrapingComentarios);
     console.log('⏰ Cronjob de comentários iniciado - roda a cada 5 minutos');
+    
+    //  NOVO: Reprocessamento de comentários - a cada 30 minutos
+    cron.schedule('*/30 * * * *', executarReprocessamentoComentarios);
+    console.log('⏰ Cronjob de reprocessamento iniciado - roda a cada 30 minutos');
 
-    // 🧠 Análise de sentimento - a cada 3 minutos (reduzido de 2 para evitar overlaps)
+    // 🧠 Análise de sentimento - a cada 3 minutos
     cron.schedule('*/3 * * * *', executarAnalisesSentimento);
     console.log('⏰ Cronjob de sentimento iniciado - roda a cada 3 minutos');
 
-    // 🎯 Análise de viabilidade - a cada 5 minutos (aumentado para dar tempo ao Score Cube)
+    // 🎯 Análise de viabilidade - a cada 5 minutos
     cron.schedule('*/5 * * * *', executarAnalisesViabilidade);
     console.log('⏰ Cronjob de viabilidade iniciado - roda a cada 5 minutos');
     
@@ -277,9 +313,10 @@ export const iniciarCronjobScraping = () => {
     
     console.log('🔄 Processamento híbrido: Score Cube + IA Qualitativa');
     console.log('📅 Score Cube (Federal/Estadual) + IA (Municipal/outros)');
-    console.log('🛡️ Proteção contra overlaps e rate limiting\n');
+    console.log('🛡️ Proteção contra overlaps e rate limiting');
+    console.log('🔄 Reprocessamento automático de publicações com potencial\n');
     
-    // ✅ Status inicial
+    //  Status inicial
     setTimeout(() => {
         console.log('\n📊 STATUS INICIAL DOS CRONJOBS:');
         console.log('🔄 Scraping: Ativo (perfis Instagram)');
@@ -292,7 +329,7 @@ export const iniciarCronjobScraping = () => {
 
 // ⏰ CRONJOB APENAS DE COMENTÁRIOS (para compatibilidade)
 export const iniciarCronjobComentarios = () => {
-    console.log('✅ Cronjob de comentários já incluído no iniciarCronjobScraping()');
+    console.log(' Cronjob de comentários já incluído no iniciarCronjobScraping()');
 };
 
 // 🔧 FUNÇÕES DE MONITORAMENTO
@@ -351,7 +388,7 @@ export const testarCronjobs = async () => {
         console.log('\n4️⃣ Testando viabilidade...');
         await executarAnalisesViabilidade();
         
-        console.log('\n✅ TODOS OS TESTES CONCLUÍDOS!');
+        console.log('\n TODOS OS TESTES CONCLUÍDOS!');
         
     } catch (error) {
         console.error('\n❌ ERRO NOS TESTES:', error.message);

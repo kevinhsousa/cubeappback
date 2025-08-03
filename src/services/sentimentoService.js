@@ -9,12 +9,71 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ 
     model: "gemini-2.0-flash",
     generationConfig: {
-        temperature: 0.1, // Mais baixo para consistência
+        temperature: 0.1,
         topK: 1,
         topP: 1,
         maxOutputTokens: 1200,
     }
 });
+
+//  ADICIONAR FUNÇÃO DE CONFIANÇA OBJETIVA (correlacionada com o score)
+const calcularConfiancaObjetiva = (comentariosFiltrados, analiseIA) => {
+    let confianca = 0.2; // Base baixa
+    
+    //  Fator 1: Quantidade de comentários
+    if (comentariosFiltrados.length >= 50) confianca += 0.25;
+    else if (comentariosFiltrados.length >= 30) confianca += 0.20;
+    else if (comentariosFiltrados.length >= 20) confianca += 0.15;
+    else if (comentariosFiltrados.length >= 10) confianca += 0.10;
+    else if (comentariosFiltrados.length >= 5) confianca += 0.05;
+    
+    //  Fator 2: Diversidade de usuários (evitar spam/bots)
+    const usuariosUnicos = new Set(comentariosFiltrados.map(c => c.ownerUsername)).size;
+    const diversidadeUsuarios = comentariosFiltrados.length > 0 ? usuariosUnicos / comentariosFiltrados.length : 0;
+    if (diversidadeUsuarios > 0.8) confianca += 0.15;
+    else if (diversidadeUsuarios > 0.6) confianca += 0.10;
+    else if (diversidadeUsuarios > 0.4) confianca += 0.05;
+    else confianca -= 0.05; // Muita repetição = menos confiável
+    
+    //  Fator 3: Qualidade dos comentários
+    const tamanhoMedio = comentariosFiltrados.reduce((acc, c) => acc + c.text.length, 0) / comentariosFiltrados.length;
+    if (tamanhoMedio > 80) confianca += 0.10;
+    else if (tamanhoMedio > 40) confianca += 0.05;
+    else if (tamanhoMedio < 15) confianca -= 0.05;
+    
+    //  Fator 4: Usuários verificados
+    const verificados = comentariosFiltrados.filter(c => c.ownerIsVerified).length;
+    if (verificados > 0) {
+        confianca += Math.min(verificados * 0.02, 0.08);
+    }
+    
+    //  Fator 5: Engajamento (comentários com likes)
+    const comLikes = comentariosFiltrados.filter(c => (c.likesCount || 0) > 0).length;
+    const percentualComLikes = comLikes / comentariosFiltrados.length;
+    if (percentualComLikes > 0.5) confianca += 0.05;
+    else if (percentualComLikes > 0.2) confianca += 0.02;
+    
+    //  FATOR CRÍTICO: Correlação com o score (scores extremos sem evidência = baixa confiança)
+    const scoreAbsoluto = Math.abs(analiseIA.sentimentoScore);
+    if (scoreAbsoluto > 0.8) {
+        // Score muito alto precisa de muita evidência
+        if (comentariosFiltrados.length < 20) confianca -= 0.15;
+        else if (comentariosFiltrados.length < 10) confianca -= 0.25;
+    } else if (scoreAbsoluto > 0.6) {
+        // Score alto precisa de evidência moderada
+        if (comentariosFiltrados.length < 10) confianca -= 0.10;
+        else if (comentariosFiltrados.length < 5) confianca -= 0.20;
+    } else if (scoreAbsoluto < 0.1) {
+        // Score muito neutro pode indicar indecisão
+        confianca -= 0.05;
+    } else {
+        // Scores moderados são mais confiáveis
+        confianca += 0.05;
+    }
+    
+    //  Limitar entre 0.1 e 0.9 (nunca 100% confiável)
+    return Math.max(0.1, Math.min(0.9, confianca));
+};
 
 export const analisarSentimentoComentarios = async (publicacaoId) => {
     try {
@@ -69,7 +128,7 @@ export const analisarSentimentoComentarios = async (publicacaoId) => {
             return null;
         }
 
-        // ✅ Verificar se já existe análise
+        //  Verificar se já existe análise
         const analiseExistente = await prisma.analisesSentimento.findFirst({
             where: {
                 publicacaoId,
@@ -78,11 +137,11 @@ export const analisarSentimentoComentarios = async (publicacaoId) => {
         });
 
         if (analiseExistente) {
-            console.log('✅ Análise já existe para esta publicação');
+            console.log(' Análise já existe para esta publicação');
             return analiseExistente;
         }
 
-        // ✅ Filtrar comentários de qualidade
+        //  Filtrar comentários de qualidade
         const comentariosFiltrados = filtrarComentariosRelevantes(publicacao.comentarios);
         
         if (comentariosFiltrados.length === 0) {
@@ -115,6 +174,11 @@ export const analisarSentimentoComentarios = async (publicacaoId) => {
 
         // Fazer chamada para Gemini com retry
         const analiseResult = await chamarGeminiComRetry(prompt);
+        
+        //  CALCULAR CONFIANÇA OBJETIVA (substituir a da IA)
+        const confiancaCalculada = calcularConfiancaObjetiva(comentariosFiltrados, analiseResult);
+        
+        console.log(`📊 Score: ${analiseResult.sentimentoScore} | Confiança: IA=${analiseResult.confianca} → Calc=${confiancaCalculada.toFixed(2)}`);
 
         // Salvar análise no banco
         const novaAnalise = await prisma.analisesSentimento.create({
@@ -124,28 +188,39 @@ export const analisarSentimentoComentarios = async (publicacaoId) => {
                 tipoAnalise: 'COMENTARIOS',
                 sentimentoLabel: analiseResult.sentimentoLabel,
                 sentimentoScore: analiseResult.sentimentoScore,
-                confianca: analiseResult.confianca,
+                confianca: confiancaCalculada, // ← Usar confiança calculada
                 totalComentariosAnalisados: comentariosFiltrados.length,
-                resumoInsights: analiseResult.insights,
-                geminiModel: 'gemini-1.5-flash',
-                versaoPrompt: 'v2.0'
+                resumoInsights: {
+                    ...analiseResult.insights,
+                    //  Adicionar métricas para transparência
+                    metricas: {
+                        usuariosUnicos: new Set(comentariosFiltrados.map(c => c.ownerUsername)).size,
+                        diversidadeUsuarios: parseFloat((new Set(comentariosFiltrados.map(c => c.ownerUsername)).size / comentariosFiltrados.length).toFixed(2)),
+                        tamanhoMedioComentario: Math.round(comentariosFiltrados.reduce((acc, c) => acc + c.text.length, 0) / comentariosFiltrados.length),
+                        usuariosVerificados: comentariosFiltrados.filter(c => c.ownerIsVerified).length,
+                        comentariosComLikes: comentariosFiltrados.filter(c => (c.likesCount || 0) > 0).length,
+                        confiancaOriginalIA: analiseResult.confianca,
+                        confiancaCalculada: confiancaCalculada
+                    }
+                },
+                geminiModel: 'gemini-2.0-flash',
+                versaoPrompt: 'v2.1-confianca-objetiva'
             }
         });
 
-        console.log(`✅ Análise salva: ${analiseResult.sentimentoLabel} (${analiseResult.sentimentoScore})`);
+        console.log(` Análise salva: ${analiseResult.sentimentoLabel} (${analiseResult.sentimentoScore}) - Confiança: ${confiancaCalculada.toFixed(2)}`);
         return novaAnalise;
 
     } catch (error) {
         console.error('❌ Erro na análise de sentimento:', error.message);
-        // Não salva nada em caso de erro de IA, apenas retorna null
         if (error.message.includes('publicação')) {
-            throw error; // Re-throw se for erro de dados (publicação não encontrada)
+            throw error;
         }
         return null;
     }
 };
 
-// ✅ Filtrar comentários relevantes para análise
+//  Filtrar comentários relevantes para análise
 const filtrarComentariosRelevantes = (comentarios) => {
     return comentarios.filter(comentario => {
         const texto = comentario.text?.trim();
@@ -174,7 +249,7 @@ const filtrarComentariosRelevantes = (comentarios) => {
     });
 };
 
-// ✅ Salvar análise vazia quando não há comentários relevantes
+//  Salvar análise vazia quando não há comentários relevantes
 const salvarAnaliseVazia = async (publicacaoId, candidatoId, motivo) => {
     return await prisma.analisesSentimento.create({
         data: {
@@ -197,7 +272,7 @@ const salvarAnaliseVazia = async (publicacaoId, candidatoId, motivo) => {
     });
 };
 
-// ✅ Chamar Gemini com retry e tratamento de erros
+//  Chamar Gemini com retry e tratamento de erros
 const chamarGeminiComRetry = async (prompt, tentativas = 3) => {
     for (let i = 0; i < tentativas; i++) {
         try {
@@ -213,14 +288,14 @@ const chamarGeminiComRetry = async (prompt, tentativas = 3) => {
             console.error(`❌ Erro na tentativa ${i + 1}:`, error.message);
             
             if (i === tentativas - 1) {
-                // Última tentativa falhou
+                //  Última tentativa falhou - confiança muito baixa
                 return {
                     sentimentoLabel: 'NEUTRO',
                     sentimentoScore: 0.0,
-                    confianca: 0.1,
+                    confianca: 0.05, // Confiança muito baixa por erro
                     insights: {
                         palavrasChave: [],
-                        temas: [],
+                        temas: ['erro_processamento'],
                         resumo: `Erro na análise após ${tentativas} tentativas`
                     }
                 };
@@ -232,7 +307,7 @@ const chamarGeminiComRetry = async (prompt, tentativas = 3) => {
     }
 };
 
-// ✅ Prompt otimizado para análise
+//  Prompt otimizado para análise
 const criarPromptAnaliseOtimizado = (candidato, comentarios, totalComentarios) => {
     return `Analise o sentimento destes comentários sobre o candidato político brasileiro.
 
@@ -275,7 +350,7 @@ REGRAS:
 - Seja objetivo e preciso`;
 };
 
-// ✅ Parse melhorado da resposta do Gemini
+//  Parse melhorado da resposta do Gemini
 const parseGeminiResponse = (text) => {
     try {
         // Limpar resposta
@@ -289,7 +364,7 @@ const parseGeminiResponse = (text) => {
         
         const parsed = JSON.parse(cleanText);
         
-        // ✅ Validações rigorosas
+        //  Validações rigorosas
         if (!['POSITIVO', 'NEGATIVO', 'NEUTRO'].includes(parsed.sentimentoLabel)) {
             console.warn('⚠️ sentimentoLabel inválido, usando NEUTRO');
             parsed.sentimentoLabel = 'NEUTRO';
@@ -305,12 +380,12 @@ const parseGeminiResponse = (text) => {
             parsed.confianca = 0.5;
         }
         
-        // ✅ Garantir estrutura de insights
+        //  Garantir estrutura de insights
         if (!parsed.insights || typeof parsed.insights !== 'object') {
             parsed.insights = { palavrasChave: [], temas: [], resumo: 'Análise processada' };
         }
         
-        // ✅ Limitar arrays
+        //  Limitar arrays
         if (Array.isArray(parsed.insights.palavrasChave)) {
             parsed.insights.palavrasChave = parsed.insights.palavrasChave
                 .filter(palavra =>
@@ -337,7 +412,7 @@ const parseGeminiResponse = (text) => {
             parsed.insights.temas = [];
         }
         
-        // ✅ Garantir resumo
+        //  Garantir resumo
         if (!parsed.insights.resumo || typeof parsed.insights.resumo !== 'string') {
             parsed.insights.resumo = `Sentimento ${parsed.sentimentoLabel.toLowerCase()} identificado`;
         }
@@ -353,7 +428,7 @@ const parseGeminiResponse = (text) => {
         console.error('❌ Erro ao fazer parse da resposta:', error.message);
         console.error('Resposta original:', text);
         
-        // ✅ Fallback mais robusto
+        //  Fallback mais robusto
         return {
             sentimentoLabel: 'NEUTRO',
             sentimentoScore: 0.0,
@@ -367,7 +442,7 @@ const parseGeminiResponse = (text) => {
     }
 };
 
-// ✅ Buscar estatísticas otimizadas
+//  Buscar estatísticas otimizadas
 export const obterEstatisticasSentimento = async (candidatoIds = null, cargoIds = null) => {
     try {
         const whereClause = {
@@ -454,12 +529,12 @@ export const obterEstatisticasSentimento = async (candidatoIds = null, cargoIds 
     }
 };
 
-// ✅ Processamento em lote otimizado
+//  Processamento em lote otimizado
 export const processarAnalisesSentimentoPendentes = async () => {
     try {
         console.log('🔄 Buscando publicações pendentes para análise...');
         
-        // ✅ Buscar apenas publicações com comentários relevantes
+        //  Buscar apenas publicações com comentários relevantes
         const publicacoesPendentes = await prisma.publicacoes.findMany({
             where: {
                 // comentarios: {
@@ -497,13 +572,13 @@ export const processarAnalisesSentimentoPendentes = async () => {
         });
 
         if (publicacoesPendentes.length === 0) {
-            console.log('✅ Nenhuma publicação pendente para análise');
+            console.log(' Nenhuma publicação pendente para análise');
             return { processadas: 0, erros: 0 };
         }
 
-        // ✅ Filtrar apenas candidatos ativos
+        //  Filtrar apenas candidatos ativos
         const publicacoesAtivas = publicacoesPendentes.filter(p => 
-            p.candidato.ativo && p._count.comentarios >= 3 // Mínimo 3 comentários
+            p.candidato.ativo && p._count.comentarios >= 2 // Mínimo 2 comentários
         );
 
         console.log(`📊 Encontradas ${publicacoesAtivas.length} publicações para analisar`);
@@ -518,7 +593,7 @@ export const processarAnalisesSentimentoPendentes = async () => {
                 await analisarSentimentoComentarios(publicacao.id);
                 processadas++;
                 
-                // ✅ Delay escalonado baseado no número de comentários
+                //  Delay escalonado baseado no número de comentários
                 const delay = Math.min(2000 + (publicacao._count.comentarios * 10), 5000);
                 await new Promise(resolve => setTimeout(resolve, delay));
                 
@@ -534,7 +609,7 @@ export const processarAnalisesSentimentoPendentes = async () => {
             }
         }
 
-        console.log(`✅ Processamento de sentimento concluído: ${processadas} sucessos, ${erros} erros`);
+        console.log(` Processamento de sentimento concluído: ${processadas} sucessos, ${erros} erros`);
         return { processadas, erros };
 
     } catch (error) {

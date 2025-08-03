@@ -11,14 +11,14 @@ const apifyClient = new ApifyClient({
 // Coletar comentários via Apify com validações
 export const coletarComentariosApify = async (postUrl) => {
     try {
-        // ✅ VALIDAR URL antes de enviar
+        //  VALIDAR URL antes de enviar
         if (!postUrl || !postUrl.includes('instagram.com')) {
             throw new Error(`URL inválida: ${postUrl}`);
         }
 
         console.log(`🚀 Coletando comentários para: ${postUrl}`);
 
-        // ✅ DETECTAR se é URL de post ou reel
+        //  DETECTAR se é URL de post ou reel
         const isReel = postUrl.includes('/reel/');
         const isPost = postUrl.includes('/p/');
 
@@ -29,7 +29,7 @@ export const coletarComentariosApify = async (postUrl) => {
         const input = {
             "directUrls": [postUrl],
             "resultsType": "comments",
-            "resultsLimit": 50, // ✅ REDUZIR para evitar timeout
+            "resultsLimit": 50, //  REDUZIR para evitar timeout
             "addParentData": false
         };
 
@@ -37,7 +37,7 @@ export const coletarComentariosApify = async (postUrl) => {
         
         const run = await apifyClient.actor("shu8hvrXbJbY3Eb9W").call(input);
         
-        // ✅ AGUARDAR conclusão com timeout
+        //  AGUARDAR conclusão com timeout
         const maxWaitTime = 120000; // 2 minutos
         const startTime = Date.now();
         
@@ -59,26 +59,26 @@ export const coletarComentariosApify = async (postUrl) => {
         
         console.log(`💬 ${items.length} comentários coletados`);
         
-        // ✅ VERIFICAR se tem dados válidos
+        //  VERIFICAR se tem dados válidos
         if (items.length === 0) {
             console.log('📭 Nenhum comentário encontrado (post pode estar privado ou sem comentários)');
             return [];
         }
 
-        // ✅ FILTRAR comentários válidos
+        //  FILTRAR comentários válidos
         const comentariosValidos = items.filter(item => 
             item.text && 
             item.text.trim().length > 0 && 
             item.id
         );
 
-        console.log(`✅ ${comentariosValidos.length} comentários válidos de ${items.length} total`);
+        console.log(` ${comentariosValidos.length} comentários válidos de ${items.length} total`);
         return comentariosValidos;
         
     } catch (error) {
         console.error('❌ Erro no Apify (comentários):', error.message);
         
-        // ✅ NÃO quebrar o fluxo - retornar array vazio
+        //  NÃO quebrar o fluxo - retornar array vazio
         if (error.message.includes('Empty or private data')) {
             console.log('📝 Post privado ou sem dados - continuando...');
             return [];
@@ -88,7 +88,116 @@ export const coletarComentariosApify = async (postUrl) => {
     }
 };
 
-// Processar comentários com melhor tratamento de erro
+//  CORRIGIR: Salvar comentários (função estava faltando)
+const salvarComentarios = async (publicacaoId, comentarios) => {
+    try {
+        let comentariosSalvos = 0;
+        let comentariosExistentes = 0;
+
+        for (const comentario of comentarios) {
+            try {
+                // Verificar se já existe
+                const existe = await prisma.comentarios.findUnique({
+                    where: { instagramCommentId: comentario.id }
+                });
+
+                if (existe) {
+                    comentariosExistentes++;
+                    continue;
+                }
+
+                // Criar novo comentário
+                await prisma.comentarios.create({
+                    data: {
+                        publicacaoId,
+                        instagramCommentId: comentario.id,
+                        text: comentario.text,
+                        likesCount: comentario.likesCount || 0,
+                        ownerUsername: comentario.ownerUsername,
+                        ownerIsVerified: comentario.ownerIsVerified || false,
+                        timestamp: comentario.timestamp ? new Date(comentario.timestamp) : new Date()
+                    }
+                });
+
+                comentariosSalvos++;
+            } catch (comentarioError) {
+                console.error(`❌ Erro ao salvar comentário ${comentario.id}:`, comentarioError.message);
+                // Continuar com outros comentários
+            }
+        }
+
+        return { comentariosSalvos, comentariosExistentes };
+    } catch (error) {
+        console.error('❌ Erro ao salvar comentários:', error.message);
+        return { comentariosSalvos: 0, comentariosExistentes: 0 };
+    }
+};
+
+//  CORRIGIR: Processar próximo candidato com query simples
+export const processarProximoCandidatoComentarios = async () => {
+    try {
+        console.log('🔍 Buscando publicações para processar comentários...');
+        
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        
+        //  QUERY SIMPLES: Buscar publicações que precisam de comentários
+        const publicacao = await prisma.publicacoes.findFirst({
+            where: {
+                candidato: {
+                    ativo: true,
+                    instagramHandle: { not: null }
+                },
+                url: { not: null },
+                OR: [
+                    // 1. Nunca processou comentários
+                    { comentariosProcessadosEm: null },
+                    // 2. Processou há mais de 24h
+                    { comentariosProcessadosEm: { lt: oneDayAgo } }
+                ]
+            },
+            orderBy: [
+                { comentariosProcessadosEm: { sort: 'asc', nulls: 'first' } },
+                { commentsCount: 'desc' },
+                { timestamp: 'desc' }
+            ],
+            include: {
+                candidato: {
+                    select: { nome: true, instagramHandle: true }
+                },
+                _count: {
+                    select: { comentarios: true }
+                }
+            }
+        });
+
+        if (!publicacao) {
+            console.log(' Nenhuma publicação pendente para comentários');
+            return null;
+        }
+
+        const comentariosSalvos = publicacao._count.comentarios;
+        const comentariosDisponiveis = publicacao.commentsCount || 0;
+        
+        console.log(`🎯 Processando: ${publicacao.candidato.nome} - ${publicacao.shortCode}`);
+        console.log(`📊 Comentários: ${comentariosSalvos} salvos / ${comentariosDisponiveis} disponíveis`);
+        
+        const resultado = await processarComentariosPublicacao(publicacao.id);
+        
+        //  MARCAR como processado independente do resultado
+        await prisma.publicacoes.update({
+            where: { id: publicacao.id },
+            data: { comentariosProcessadosEm: new Date() }
+        });
+        
+        return resultado;
+
+    } catch (error) {
+        console.error('❌ Erro ao processar próximo candidato:', error.message);
+        return null;
+    }
+};
+
+//  ATUALIZAR: Processar comentários com melhor lógica
 export const processarComentariosPublicacao = async (publicacaoId) => {
     try {
         const publicacao = await prisma.publicacoes.findUnique({
@@ -96,6 +205,9 @@ export const processarComentariosPublicacao = async (publicacaoId) => {
             include: {
                 candidato: {
                     select: { nome: true, instagramHandle: true }
+                },
+                _count: {
+                    select: { comentarios: true }
                 }
             }
         });
@@ -104,46 +216,71 @@ export const processarComentariosPublicacao = async (publicacaoId) => {
             throw new Error('Publicação não encontrada');
         }
 
-        console.log(`📄 Processando: ${publicacao.shortCode} de ${publicacao.candidato.nome}`);
+        const comentariosSalvosAntes = publicacao._count.comentarios;
+        console.log(`📄 Processando: ${publicacao.shortCode} de ${publicacao.candidato.nome} (${comentariosSalvosAntes} comentários já salvos)`);
 
-        // ✅ VERIFICAR se URL existe
         if (!publicacao.url) {
             console.log('❌ URL da publicação não encontrada');
-            return { comentariosSalvos: 0, comentariosExistentes: 0 };
+            return { comentariosSalvos: 0, comentariosExistentes: comentariosSalvosAntes };
         }
 
         // Coletar comentários via Apify
         const comentarios = await coletarComentariosApify(publicacao.url);
         
         if (comentarios.length === 0) {
-            console.log('📭 Nenhum comentário para processar');
-            // ✅ MARCAR como processado mesmo sem comentários
-            await prisma.publicacoes.update({
-                where: { id: publicacao.id },
-                data: { atualizadoEm: new Date() }
-            });
-            return { comentariosSalvos: 0, comentariosExistentes: 0 };
+            console.log('📭 Nenhum comentário coletado (pode ser post recente ou privado)');
+            return { comentariosSalvos: 0, comentariosExistentes: comentariosSalvosAntes };
         }
 
-        // Salvar comentários
+        // Salvar comentários (incluindo novos)
         const resultado = await salvarComentarios(publicacao.id, comentarios);
         
-        console.log(`✅ Processamento concluído: ${resultado.comentariosSalvos} novos comentários`);
-        try {
-            console.log(`🧠 Iniciando análise de sentimento automaticamente...`);
-            await analisarSentimentoComentarios(publicacaoId);
-            console.log(`✅ Análise de sentimento concluída!`);
-        } catch (sentimentoError) {
-            console.error('❌ Erro na análise de sentimento:', sentimentoError.message);
-            // Não quebrar o fluxo principal
+        const totalComentarios = comentariosSalvosAntes + resultado.comentariosSalvos;
+        
+        console.log(` Processamento concluído: ${resultado.comentariosSalvos} novos comentários (${totalComentarios} total)`);
+        
+        //  SE temos comentários suficientes, fazer análise de sentimento
+        if (totalComentarios >= 3) { // Mínimo 3 comentários para análise
+            try {
+                console.log(`🧠 Iniciando análise de sentimento (${totalComentarios} comentários)...`);
+                const analiseExistente = await prisma.analisesSentimento.findFirst({
+                    where: {
+                        publicacaoId,
+                        tipoAnalise: 'COMENTARIOS'
+                    }
+                });
+
+                if (!analiseExistente) {
+                    await analisarSentimentoComentarios(publicacaoId);
+                    
+                    // Marcar sentimento como processado
+                    await prisma.publicacoes.update({
+                        where: { id: publicacaoId },
+                        data: { sentimentoProcessadoEm: new Date() }
+                    });
+                    
+                    console.log(` Análise de sentimento concluída!`);
+                } else {
+                    console.log(`ℹ️ Análise de sentimento já existe`);
+                }
+            } catch (sentimentoError) {
+                console.error('❌ Erro na análise de sentimento:', sentimentoError.message);
+                // Não quebrar o fluxo principal
+            }
+        } else {
+            console.log(`⏳ Aguardando mais comentários para análise (mínimo 3, atual: ${totalComentarios})`);
         }
+        
         return {
             publicacao: {
                 id: publicacao.id,
                 shortCode: publicacao.shortCode,
                 candidato: publicacao.candidato.nome
             },
-            ...resultado
+            comentariosSalvos: resultado.comentariosSalvos,
+            comentariosExistentes: comentariosSalvosAntes + resultado.comentariosExistentes,
+            totalComentarios,
+            analiseSentimentoRealizada: totalComentarios >= 3
         };
         
     } catch (error) {
@@ -152,149 +289,129 @@ export const processarComentariosPublicacao = async (publicacaoId) => {
     }
 };
 
-// Processar próximo candidato com melhor lógica
-export const processarProximoCandidatoComentarios = async () => {
+//  SIMPLIFICAR: Reprocessar publicações com potencial
+export const reprocessarPublicacoesComPotencial = async () => {
     try {
-        console.log('🔍 Buscando publicações para processar comentários...');
+        console.log('🔄 Buscando publicações com potencial para novos comentários...');
         
-        // ✅ BUSCAR publicações sem comentários há pelo menos 24h
-        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const ultimasSemanas = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000); // 2 semanas
+        const umDiaAtras = new Date(Date.now() - 24 * 60 * 60 * 1000);
         
-        const publicacao = await prisma.publicacoes.findFirst({
+        //  QUERY SIMPLES: Buscar publicações recentes que podem ter ganhado comentários
+        const publicacoesComPotencial = await prisma.publicacoes.findMany({
             where: {
-                candidato: {
-                    ativo: true,
-                    instagramHandle: { not: null }
-                },
-                url: { not: null }, // ✅ SÓ pegar com URL válida
-                OR: [
-                    {
-                        comentarios: { none: {} } // Nunca processou
-                    },
-                    {
-                        AND: [
-                            { comentarios: { none: {} } },
-                            { atualizadoEm: { lt: oneDayAgo } }
-                        ]
-                    }
-                ]
+                candidato: { ativo: true },
+                timestamp: { gte: ultimasSemanas },
+                commentsCount: { gt: 0 },
+                comentariosProcessadosEm: { lt: umDiaAtras },
+                url: { not: null }
             },
-            orderBy: [
-                { timestamp: 'desc' }, // Posts mais recentes primeiro
-                { likesCount: 'desc' }  // Posts com mais likes
-            ],
             include: {
-                candidato: {
-                    select: { nome: true, instagramHandle: true }
-                }
-            }
+                candidato: { select: { nome: true } },
+                _count: { select: { comentarios: true } }
+            },
+            orderBy: { commentsCount: 'desc' },
+            take: 5 //  REDUZIR para 5 por vez
         });
 
-        if (!publicacao) {
-            console.log('✅ Nenhuma publicação pendente para comentários');
-            return null;
+        if (publicacoesComPotencial.length === 0) {
+            console.log(' Nenhuma publicação com potencial encontrada');
+            return { processadas: 0 };
         }
 
-        console.log(`🎯 Processando: ${publicacao.candidato.nome} - ${publicacao.shortCode}`);
-        return await processarComentariosPublicacao(publicacao.id);
-
-    } catch (error) {
-        console.error('❌ Erro ao processar próximo candidato:', error.message);
-        return null; // ✅ NÃO quebrar o cronjob
-    }
-};
-
-// Resto das funções continuam iguais...
-export const salvarComentarios = async (publicacaoId, comentarios) => {
-    try {
-        console.log(`💾 Salvando ${comentarios.length} comentários...`);
+        console.log(`🎯 Encontradas ${publicacoesComPotencial.length} publicações com potencial`);
         
-        let comentariosSalvos = 0;
-        let comentariosExistentes = 0;
+        let processadas = 0;
         
-        for (const comentario of comentarios) {
-            try {
-                const existeComentario = await prisma.comentarios.findUnique({
-                    where: { instagramCommentId: comentario.id }
-                });
-
-                if (existeComentario) {
-                    comentariosExistentes++;
-                    continue;
+        for (const pub of publicacoesComPotencial) {
+            const comentariosSalvos = pub._count.comentarios;
+            const comentariosDisponiveis = pub.commentsCount || 0;
+            
+            // Só reprocessar se há diferença significativa (pelo menos 2 comentários de diferença)
+            if (comentariosDisponiveis > comentariosSalvos + 1) {
+                console.log(`🔄 Reprocessando ${pub.shortCode} (${comentariosSalvos}/${comentariosDisponiveis} comentários)`);
+                
+                try {
+                    await processarComentariosPublicacao(pub.id);
+                    processadas++;
+                    
+                    // Delay entre processamentos
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                } catch (error) {
+                    console.error(`❌ Erro ao reprocessar ${pub.shortCode}:`, error.message);
                 }
-
-                await prisma.comentarios.create({
-                    data: {
-                        publicacaoId,
-                        instagramCommentId: comentario.id,
-                        postUrl: comentario.postUrl,
-                        commentUrl: comentario.commentUrl,
-                        text: comentario.text,
-                        timestamp: comentario.timestamp ? new Date(comentario.timestamp) : null,
-                        repliesCount: comentario.repliesCount,
-                        likesCount: comentario.likesCount,
-                        
-                        ownerUsername: comentario.ownerUsername,
-                        ownerProfilePicUrl: comentario.ownerProfilePicUrl,
-                        ownerFullName: comentario.owner?.full_name,
-                        ownerId: comentario.owner?.id,
-                        ownerFbidV2: comentario.owner?.fbid_v2,
-                        ownerIsMentionable: comentario.owner?.is_mentionable,
-                        ownerIsPrivate: comentario.owner?.is_private,
-                        ownerIsVerified: comentario.owner?.is_verified,
-                        ownerLatestReelMedia: comentario.owner?.latest_reel_media ? 
-                            BigInt(comentario.owner.latest_reel_media) : null,
-                        ownerProfilePicId: comentario.owner?.profile_pic_id,
-                    }
-                });
-                
-                comentariosSalvos++;
-                
-            } catch (comentarioError) {
-                console.error(`❌ Erro ao salvar comentário ${comentario.id}:`, comentarioError.message);
             }
         }
         
-        console.log(`✅ Comentários: ${comentariosSalvos} novos, ${comentariosExistentes} já existiam`);
-        return { comentariosSalvos, comentariosExistentes };
+        console.log(` Reprocessamento concluído: ${processadas} publicações`);
+        return { processadas };
         
     } catch (error) {
-        console.error('❌ Erro ao salvar comentários:', error.message);
-        throw error;
+        console.error('❌ Erro no reprocessamento:', error.message);
+        return { processadas: 0 };
     }
 };
 
+//  CORRIGIR: Estatísticas mais simples
 export const obterEstatisticasComentarios = async () => {
     try {
-        const statsPublicacoes = await prisma.publicacoes.aggregate({
-            _count: { id: true }
-        });
+        //  Contar publicações total
+        const totalPublicacoes = await prisma.publicacoes.count();
 
+        //  Contar publicações com comentários salvos
         const publicacoesComComentarios = await prisma.publicacoes.count({
             where: {
-                comentarios: {
-                    some: {}
-                }
+                comentarios: { some: {} }
             }
         });
 
-        const totalComentarios = await prisma.comentarios.aggregate({
-            _count: { id: true }
+        //  Somar comentários disponíveis vs salvos
+        const statsComentarios = await prisma.publicacoes.aggregate({
+            _sum: { commentsCount: true }
         });
 
-        const pendentes = statsPublicacoes._count.id - publicacoesComComentarios;
+        const totalComentariosSalvos = await prisma.comentarios.count();
+
+        //  Estatísticas de reprocessamento
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+        
+        const publicacoesComPotencial = await prisma.publicacoes.count({
+            where: {
+                candidato: { ativo: true },
+                commentsCount: { gt: 0 },
+                comentariosProcessadosEm: { lt: oneDayAgo },
+                timestamp: { gte: twoWeeksAgo }
+            }
+        });
+
+        const comentariosDisponiveis = statsComentarios._sum.commentsCount || 0;
+        const pendentes = totalPublicacoes - publicacoesComComentarios;
 
         return {
-            totalPublicacoes: statsPublicacoes._count.id,
+            totalPublicacoes,
             publicacoesComComentarios,
             publicacoesPendentes: pendentes,
-            totalComentarios: totalComentarios._count.id,
-            percentualCompleto: statsPublicacoes._count.id > 0 ? 
-                ((publicacoesComComentarios / statsPublicacoes._count.id) * 100).toFixed(1) : 0
+            publicacoesComPotencial,
+            totalComentariosDisponiveis: comentariosDisponiveis,
+            totalComentariosSalvos,
+            eficienciaColeta: comentariosDisponiveis > 0 ? 
+                ((totalComentariosSalvos / comentariosDisponiveis) * 100).toFixed(1) : '0',
+            percentualCompleto: totalPublicacoes > 0 ? 
+                ((publicacoesComComentarios / totalPublicacoes) * 100).toFixed(1) : '0'
         };
         
     } catch (error) {
         console.error('❌ Erro ao obter estatísticas:', error.message);
-        return null;
+        return {
+            totalPublicacoes: 0,
+            publicacoesComComentarios: 0,
+            publicacoesPendentes: 0,
+            publicacoesComPotencial: 0,
+            totalComentariosDisponiveis: 0,
+            totalComentariosSalvos: 0,
+            eficienciaColeta: '0',
+            percentualCompleto: '0'
+        };
     }
 };
