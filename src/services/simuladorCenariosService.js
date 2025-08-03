@@ -19,35 +19,34 @@ export const simularCenariosCandidato = async (candidatoId) => {
         const candidato = await buscarDadosCompletosCandidato(candidatoId);
         
         if (!candidato) {
-            throw new Error('Candidato não encontrado');
+            throw new Error('Candidato não encontrada');
         }
 
-        // Validar se é Federal ou Estadual
-        const cargoPretendido = candidato.cargoPretendido?.nivel?.toLowerCase() || '';
-        const isFederalEstadualPretendido = cargoPretendido.includes('federal') || cargoPretendido.includes('estadual');
+        //  VALIDAR APENAS CARGO PRETENDIDO (não atual)
+        const cargoPretendido = candidato.cargoPretendido?.nome?.toLowerCase() || '';
+        console.log(`📋 Cargo pretendido: ${candidato.cargoPretendido?.nome || 'Não definido'}`);
 
-        const cargoAtual = candidato.cargo?.nivel?.toLowerCase() || '';
-        const isFederalEstadualAtual = cargoAtual.includes('federal') || cargoAtual.includes('estadual');
+        //  APENAS Federal ou Estadual no cargo PRETENDIDO
+        const isFederal = cargoPretendido.includes('federal') || cargoPretendido.includes('deputado federal');
+        const isEstadual = cargoPretendido.includes('estadual') || cargoPretendido.includes('deputado estadual');
 
-        console.log(`Cargo pretendido: ${candidato.nome}, Cargo atual: ${cargoAtual}`);
-
-        if (!isFederalEstadualAtual && !isFederalEstadualPretendido) {
-            console.log('⏭️ Simulador aplicável apenas a cargos Federal/Estadual');
-            return null;
+        if (!isFederal && !isEstadual) {
+            console.log(`⏭️ Simulador NÃO aplicável - Cargo pretendido: "${candidato.cargoPretendido?.nome}"`);
+            console.log(`⏭️ Simulador aplicável APENAS para: Deputado Federal/Estadual`);
+            return null; //  NÃO CALCULAR - simplesmente ignore
         }
 
-        // Validar dados necessários
+        //  Validar dados necessários para simulação
         const validacao = validarDadosParaSimulacao(candidato);
         if (!validacao.valido) {
             console.log(`⚠️ Dados insuficientes para simulação: ${validacao.motivo}`);
-            // Não salva nada, apenas retorna null
-            return null;
+            return null; //  NÃO CALCULAR - dados insuficientes
         }
 
-        // Executar simulação conforme documento
-        const resultadoSimulacao = executarSimulacaoConfomeDocumento(candidato);
+        //  Executar simulação conforme documento
+        const resultadoSimulacao = executarSimulacaoConformeDocumento(candidato);
 
-        // Verificar se já existe simulação para este candidato
+        //  Verificar se já existe simulação para este candidato
         const simulacaoExistente = await prisma.simuladorCenarios.findFirst({
             where: { candidatoId }
         });
@@ -56,7 +55,7 @@ export const simularCenariosCandidato = async (candidatoId) => {
 
         if (simulacaoExistente) {
             // Atualizar simulação existente
-            console.log('🔄 Atualizando simulação existente em vez de criar nova');
+            console.log('🔄 Atualizando simulação existente');
             simulacao = await prisma.simuladorCenarios.update({
                 where: { id: simulacaoExistente.id },
                 data: {
@@ -75,8 +74,8 @@ export const simularCenariosCandidato = async (candidatoId) => {
                 }
             });
         } else {
-            // Criar nova simulação apenas se não existir nenhuma
-            console.log('🆕 Criando primeira simulação para o candidato');
+            // Criar nova simulação
+            console.log('🆕 Criando nova simulação');
             simulacao = await prisma.simuladorCenarios.create({
                 data: {
                     candidatoId,
@@ -108,11 +107,13 @@ export const simularCenariosCandidato = async (candidatoId) => {
 /**
  * 🎯 EXECUTAR SIMULAÇÃO CONFORME DOCUMENTO OFICIAL
  */
-const executarSimulacaoConfomeDocumento = (candidato) => {
+const executarSimulacaoConformeDocumento = (candidato) => {
     try {
-        // 1. Definir categoria baseada no cargo
+        //  1. Definir categoria baseada APENAS no cargo PRETENDIDO
         const cargoPretendido = candidato.cargoPretendido?.nome?.toLowerCase() || '';
         const categoria = cargoPretendido.includes('federal') ? 'Federal' : 'Estadual';
+
+        console.log(`📊 Categoria definida: ${categoria} (baseado em: ${candidato.cargoPretendido?.nome})`);
 
         // 2. Coletar I_ref, α, β do banco
         const { I_ref, α, β } = BANCO_CONHECIMENTO[categoria];
@@ -223,33 +224,41 @@ const calcularEngajamentoMedio = (candidato) => {
 const validarDadosParaSimulacao = (candidato) => {
     const problemas = [];
 
+    //  1. DEVE ter cargo pretendido definido
     if (!candidato.cargoPretendido?.nome) {
         problemas.push('Cargo pretendido não definido');
+        return {
+            valido: false,
+            motivo: problemas.join('; ')
+        };
     }
 
-    const cargoPretendido = candidato.cargoPretendido?.nivel?.toLowerCase() || '';
-    const isFederalEstadualPretendido = cargoPretendido.includes('federal') || cargoPretendido.includes('estadual');
+    //  2. DEVE ser Federal ou Estadual (já validado antes, mas verificar novamente)
+    const cargoPretendido = candidato.cargoPretendido.nome.toLowerCase();
+    const isFederal = cargoPretendido.includes('federal') || cargoPretendido.includes('deputado federal');
+    const isEstadual = cargoPretendido.includes('estadual') || cargoPretendido.includes('deputado estadual');
 
-    const cargoAtual = candidato.cargo?.nivel?.toLowerCase() || '';
-    const isFederalEstadualAtual = cargoAtual.includes('federal') || cargoAtual.includes('estadual');
-
-    console.log(`Cargo pretendido: ${cargoPretendido}, Cargo atual: ${cargoAtual}`);
-
-    if (!isFederalEstadualPretendido && !isFederalEstadualAtual) {
-        problemas.push('Simulador aplicável apenas a cargos Federal/Estadual');
+    if (!isFederal && !isEstadual) {
+        problemas.push('Simulador aplicável apenas para Deputado Federal/Estadual');
+        return {
+            valido: false,
+            motivo: problemas.join('; ')
+        };
     }
 
+    //  3. DEVE ter dados de Instagram
     if (!candidato.followersCount || candidato.followersCount === 0) {
         problemas.push('Sem dados de seguidores do Instagram');
     }
 
+    //  4. DEVE ter publicações para calcular engajamento
     if (!candidato.publicacoes || candidato.publicacoes.length === 0) {
         problemas.push('Sem publicações para calcular engajamento');
     }
 
     return {
         valido: problemas.length === 0,
-        motivo: problemas.join('; ') || 'Dados suficientes para simulação'
+        motivo: problemas.length > 0 ? problemas.join('; ') : 'Dados suficientes para simulação'
     };
 };
 
@@ -261,6 +270,7 @@ const buscarDadosCompletosCandidato = async (candidatoId) => {
         where: { id: candidatoId },
         include: {
             cargoPretendido: { select: { nome: true, nivel: true } },
+            cargo: { select: { nome: true, nivel: true } }, // Para debug apenas
             publicacoes: {
                 select: {
                     likesCount: true,
@@ -279,32 +289,11 @@ const buscarDadosCompletosCandidato = async (candidatoId) => {
 };
 
 /**
- * 💾 Salvar simulação incompleta
- */
-const salvarSimulacaoIncompleta = async (candidatoId, motivo) => {
-    return await prisma.simuladorCenarios.create({
-        data: {
-            candidatoId,
-            categoria: 'N/A',
-            tipoCanditato: 'INDETERMINADO',
-            scoreCube: 0.0,
-            gapEleitoral: 0.0,
-            deficitEngajamento: 0.0,
-            incerteza: 0.0,
-            cenarioOtimista: 0,
-            cenarioRealista: 0,
-            cenarioPessimista: 0,
-            parametrosCalculo: { erro: motivo },
-            versaoAlgoritmo: 'v1.0-erro'
-        }
-    });
-};
-
-/**
  * 📊 OBTER SIMULAÇÕES POR CARGO (para tabelas do documento)
  */
 export const obterSimulacoesPorCargo = async () => {
     try {
+        //  BUSCAR APENAS simulações válidas de Federal/Estadual
         const simulacoes = await prisma.simuladorCenarios.findMany({
             where: {
                 categoria: { in: ['Federal', 'Estadual'] },
@@ -364,26 +353,26 @@ export const processarSimulacoesPendentes = async () => {
     try {
         console.log('🔄 Buscando candidatos pendentes para simulação de cenários...');
         
-        // Buscar candidatos Federal/Estadual sem simulação recente
+        //  BUSCAR APENAS candidatos com cargo PRETENDIDO Federal/Estadual
         const candidatosPendentes = await prisma.candidato.findMany({
             where: {
                 ativo: true,
                 instagramHandle: { not: null },
                 followersCount: { gt: 0 },
+                //  FILTRO RIGOROSO: apenas cargo PRETENDIDO Federal/Estadual
                 cargoPretendido: {
                     OR: [
-                        { nome: { contains: 'Federal', mode: 'insensitive' } },
-                        { nome: { contains: 'Estadual', mode: 'insensitive' } },
                         { nome: { contains: 'Deputado Federal', mode: 'insensitive' } },
                         { nome: { contains: 'Deputado Estadual', mode: 'insensitive' } },
-                        { nome: { contains: 'Senador', mode: 'insensitive' } }
+                        { nome: { contains: 'Federal', mode: 'insensitive' } },
+                        { nome: { contains: 'Estadual', mode: 'insensitive' } }
                     ]
                 },
                 // Não tem simulação OU simulação é antiga (>24h)
                 OR: [
-                    { simulacoesCenarios: { none: {} } }, //  CORRIGIDO: era 'cenarios'
+                    { simulacoesCenarios: { none: {} } },
                     {
-                        simulacoesCenarios: { //  CORRIGIDO: era 'cenarios'
+                        simulacoesCenarios: {
                             every: {
                                 processadoEm: {
                                     lt: new Date(Date.now() - 24 * 60 * 60 * 1000)
@@ -400,21 +389,29 @@ export const processarSimulacoesPendentes = async () => {
         });
 
         if (candidatosPendentes.length === 0) {
-            console.log(' Nenhum candidato pendente para simulação de cenários');
-            return { processados: 0, erros: 0 };
+            console.log(' Nenhum candidato Federal/Estadual pendente para simulação');
+            return { processados: 0, erros: 0, ignorados: 0 };
         }
 
-        console.log(`🎯 Encontrados ${candidatosPendentes.length} candidatos para simulação`);
+        console.log(`🎯 Encontrados ${candidatosPendentes.length} candidatos Federal/Estadual para simulação`);
 
         let processados = 0;
         let erros = 0;
+        let ignorados = 0;
 
         for (const candidato of candidatosPendentes) {
             try {
-                console.log(`🎯 Simulando cenários: ${candidato.nome} (${candidato.cargoPretendido?.nome})`);
+                console.log(`🎯 Simulando: ${candidato.nome} (${candidato.cargoPretendido?.nome})`);
                 
-                await simularCenariosCandidato(candidato.id);
-                processados++;
+                const resultado = await simularCenariosCandidato(candidato.id);
+                
+                if (resultado === null) {
+                    ignorados++;
+                    console.log(`⏭️ Ignorado: ${candidato.nome} (não elegível para simulação)`);
+                } else {
+                    processados++;
+                    console.log(` Simulado: ${candidato.nome}`);
+                }
                 
                 // Delay entre processamentos
                 await new Promise(resolve => setTimeout(resolve, 3000));
@@ -427,12 +424,12 @@ export const processarSimulacoesPendentes = async () => {
             }
         }
 
-        console.log(` Simulações concluídas: ${processados} sucessos, ${erros} erros`);
-        return { processados, erros };
+        console.log(` Simulações concluídas: ${processados} sucessos, ${erros} erros, ${ignorados} ignorados`);
+        return { processados, erros, ignorados };
 
     } catch (error) {
         console.error('❌ Erro no processamento batch de simulações:', error.message);
-        return { processados: 0, erros: 1 };
+        return { processados: 0, erros: 1, ignorados: 0 };
     }
 };
 
