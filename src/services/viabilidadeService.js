@@ -809,6 +809,7 @@ export const obterEstatisticasViabilidade = async (candidatoIds = null, cargoIds
                 viabilidades: { some: {} } // Tem pelo menos uma análise
             },
             include: {
+                cargo: { select: { nome: true, nivel: true } },
                 cargoPretendido: { select: { nome: true, nivel: true } },
                 viabilidades: {
                     orderBy: { processadoEm: 'desc' },
@@ -838,6 +839,7 @@ export const obterEstatisticasViabilidade = async (candidatoIds = null, cargoIds
                 candidatosComScore.push({
                     id: candidato.id,
                     nome: candidato.nome,
+                    cargo: candidato.cargo?.nome,
                     cargoPretendido: candidato.cargoPretendido?.nome,
                     score: ultimaAnalise.scoreViabilidade,
                     categoria: ultimaAnalise.categoria,
