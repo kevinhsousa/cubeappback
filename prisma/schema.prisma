@@ -135,7 +135,8 @@ model Publicacoes {
   //  NOVO: Controle de processamento
   comentariosProcessadosEm DateTime? // Quando foi última coleta de comentários
   sentimentoProcessadoEm   DateTime? // Quando foi última análise de sentimento
-  
+  reprocessado             Boolean?  @default(false)
+
   comentarios           Comentarios[]
   analisesSentimento    AnalisesSentimento[]
   

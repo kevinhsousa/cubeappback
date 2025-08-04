@@ -136,11 +136,9 @@ const salvarComentarios = async (publicacaoId, comentarios) => {
 //  CORRIGIR: Processar próximo candidato com query simples
 export const processarProximoCandidatoComentarios = async () => {
     try {
-        console.log('🔍 Buscando publicações para processar comentários...');
+        console.log('🔍 Buscando publicações para processar comentários (PRIMEIRA VEZ apenas)...');
         
-        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        
-        //  QUERY SIMPLES: Buscar publicações que precisam de comentários
+        // BUSCAR: Apenas publicações que NUNCA foram processadas
         const publicacao = await prisma.publicacoes.findFirst({
             where: {
                 candidato: {
@@ -148,15 +146,9 @@ export const processarProximoCandidatoComentarios = async () => {
                     instagramHandle: { not: null }
                 },
                 url: { not: null },
-                OR: [
-                    // 1. Nunca processou comentários
-                    { comentariosProcessadosEm: null },
-                    // 2. Processou há mais de 24h
-                    { comentariosProcessadosEm: { lt: oneDayAgo } }
-                ]
+                comentariosProcessadosEm: null
             },
             orderBy: [
-                { comentariosProcessadosEm: { sort: 'asc', nulls: 'first' } },
                 { commentsCount: 'desc' },
                 { timestamp: 'desc' }
             ],
@@ -171,22 +163,20 @@ export const processarProximoCandidatoComentarios = async () => {
         });
 
         if (!publicacao) {
-            console.log(' Nenhuma publicação pendente para comentários');
+            console.log(' Todas publicações já foram processadas pela primeira vez');
             return null;
         }
 
-        const comentariosSalvos = publicacao._count.comentarios;
-        const comentariosDisponiveis = publicacao.commentsCount || 0;
-        
-        console.log(`🎯 Processando: ${publicacao.candidato.nome} - ${publicacao.shortCode}`);
-        console.log(`📊 Comentários: ${comentariosSalvos} salvos / ${comentariosDisponiveis} disponíveis`);
+        console.log(`🎯 Processando PRIMEIRA VEZ: ${publicacao.candidato.nome} - ${publicacao.shortCode}`);
         
         const resultado = await processarComentariosPublicacao(publicacao.id);
         
-        //  MARCAR como processado independente do resultado
+        // Marcar como processado (primeira vez)
         await prisma.publicacoes.update({
             where: { id: publicacao.id },
-            data: { comentariosProcessadosEm: new Date() }
+            data: { 
+                comentariosProcessadosEm: new Date()
+            }
         });
         
         return resultado;
@@ -194,6 +184,90 @@ export const processarProximoCandidatoComentarios = async () => {
     } catch (error) {
         console.error('❌ Erro ao processar próximo candidato:', error.message);
         return null;
+    }
+};
+
+export const reprocessarUmaVezApenas = async () => {
+    try {
+        console.log('🔍 Reprocessamento único (máximo 1x por post)...');
+        
+        const umDiaAtras = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const seteDiasAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        
+        // BUSCAR: Posts que podem ser reprocessados UMA ÚNICA VEZ
+        const publicacoesElegiveis = await prisma.publicacoes.findMany({
+            where: {
+                candidato: { ativo: true },
+                timestamp: { gte: seteDiasAtras }, // Última semana apenas
+                commentsCount: { gt: 5 }, // Pelo menos 5 comentários disponíveis
+                comentariosProcessadosEm: { 
+                    not: null, // Já foi processado pelo menos 1 vez
+                    lt: umDiaAtras // Há mais de 1 dia
+                },
+                //  NUNCA foi reprocessado
+                OR: [
+                    { reprocessado: null },
+                    { reprocessado: false }
+                ],
+                url: { not: null }
+            },
+            include: {
+                candidato: { select: { nome: true } },
+                _count: { select: { comentarios: true } }
+            },
+            orderBy: { commentsCount: 'desc' },
+            take: 3 // Máximo 3 por execução
+        });
+
+        if (publicacoesElegiveis.length === 0) {
+            console.log(' Nenhum post elegível para reprocessamento (todos já foram reprocessados)');
+            return { processadas: 0, motivo: 'Todos já reprocessados' };
+        }
+
+        console.log(`🎯 ${publicacoesElegiveis.length} posts elegíveis para reprocessamento ÚNICO`);
+        
+        let processadas = 0;
+        
+        for (const pub of publicacoesElegiveis) {
+            const comentariosSalvos = pub._count.comentarios;
+            const comentariosDisponiveis = pub.commentsCount || 0;
+            
+            // Só vale a pena se tem pelo menos 3 comentários de diferença
+            if (comentariosDisponiveis > comentariosSalvos + 2) {
+                console.log(`🔄 REPROCESSANDO ${pub.shortCode} (${comentariosSalvos}/${comentariosDisponiveis}) - ÚNICA VEZ`);
+                
+                try {
+                    await processarComentariosPublicacao(pub.id);
+                    processadas++;
+                    
+                } catch (error) {
+                    console.error(`❌ Erro ao reprocessar ${pub.shortCode}:`, error.message);
+                }
+            } else {
+                console.log(`⏭️ ${pub.shortCode}: diferença insuficiente (${comentariosDisponiveis - comentariosSalvos})`);
+            }
+            
+            //  MARCAR COMO REPROCESSADO (independente se coletou ou não)
+            await prisma.publicacoes.update({
+                where: { id: pub.id },
+                data: { 
+                    reprocessado: true,
+                    comentariosProcessadosEm: new Date()
+                }
+            });
+            
+            console.log(` ${pub.shortCode} marcado como reprocessado - NUNCA MAIS será reprocessado`);
+            
+            // Delay entre processamentos
+            await new Promise(resolve => setTimeout(resolve, 8000)); // 8 segundos
+        }
+        
+        console.log(` Reprocessamento concluído: ${processadas} posts processados`);
+        return { processadas };
+        
+    } catch (error) {
+        console.error('❌ Erro no reprocessamento:', error.message);
+        return { processadas: 0 };
     }
 };
 
@@ -352,66 +426,56 @@ export const reprocessarPublicacoesComPotencial = async () => {
     }
 };
 
-//  CORRIGIR: Estatísticas mais simples
 export const obterEstatisticasComentarios = async () => {
     try {
-        //  Contar publicações total
         const totalPublicacoes = await prisma.publicacoes.count();
-
-        //  Contar publicações com comentários salvos
-        const publicacoesComComentarios = await prisma.publicacoes.count({
-            where: {
-                comentarios: { some: {} }
-            }
+        
+        const publicacoesNuncaProcessadas = await prisma.publicacoes.count({
+            where: { comentariosProcessadosEm: null }
+        });
+        
+        const publicacoesReprocessadas = await prisma.publicacoes.count({
+            where: { reprocessado: true }
         });
 
-        //  Somar comentários disponíveis vs salvos
-        const statsComentarios = await prisma.publicacoes.aggregate({
-            _sum: { commentsCount: true }
+        const publicacoesComComentarios = await prisma.publicacoes.count({
+            where: { comentarios: { some: {} } }
         });
 
         const totalComentariosSalvos = await prisma.comentarios.count();
 
-        //  Estatísticas de reprocessamento
-        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
-        
-        const publicacoesComPotencial = await prisma.publicacoes.count({
-            where: {
-                candidato: { ativo: true },
-                commentsCount: { gt: 0 },
-                comentariosProcessadosEm: { lt: oneDayAgo },
-                timestamp: { gte: twoWeeksAgo }
-            }
+        const statsComentarios = await prisma.publicacoes.aggregate({
+            _sum: { commentsCount: true }
         });
 
         const comentariosDisponiveis = statsComentarios._sum.commentsCount || 0;
-        const pendentes = totalPublicacoes - publicacoesComComentarios;
 
         return {
             totalPublicacoes,
+            publicacoesNuncaProcessadas,
+            publicacoesProcessadas: totalPublicacoes - publicacoesNuncaProcessadas,
+            publicacoesReprocessadas,
             publicacoesComComentarios,
-            publicacoesPendentes: pendentes,
-            publicacoesComPotencial,
-            totalComentariosDisponiveis: comentariosDisponiveis,
             totalComentariosSalvos,
+            totalComentariosDisponiveis: comentariosDisponiveis,
             eficienciaColeta: comentariosDisponiveis > 0 ? 
                 ((totalComentariosSalvos / comentariosDisponiveis) * 100).toFixed(1) : '0',
-            percentualCompleto: totalPublicacoes > 0 ? 
-                ((publicacoesComComentarios / totalPublicacoes) * 100).toFixed(1) : '0'
+            percentualProcessado: totalPublicacoes > 0 ? 
+                (((totalPublicacoes - publicacoesNuncaProcessadas) / totalPublicacoes) * 100).toFixed(1) : '0'
         };
         
     } catch (error) {
         console.error('❌ Erro ao obter estatísticas:', error.message);
         return {
             totalPublicacoes: 0,
+            publicacoesNuncaProcessadas: 0,
+            publicacoesProcessadas: 0,
+            publicacoesReprocessadas: 0,
             publicacoesComComentarios: 0,
-            publicacoesPendentes: 0,
-            publicacoesComPotencial: 0,
-            totalComentariosDisponiveis: 0,
             totalComentariosSalvos: 0,
+            totalComentariosDisponiveis: 0,
             eficienciaColeta: '0',
-            percentualCompleto: '0'
+            percentualProcessado: '0'
         };
     }
 };
