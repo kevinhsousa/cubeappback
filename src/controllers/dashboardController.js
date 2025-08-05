@@ -409,8 +409,7 @@ async function gerarDadosNuvemPalavras(candidatoIds = null, cargoIds = null, car
             select: {
                 resumoInsights: true
             },
-            orderBy: { criadoEm: 'desc' },
-            take: 100
+            orderBy: { criadoEm: 'desc' }
         });
 
         if (analises.length === 0) {
@@ -421,7 +420,6 @@ async function gerarDadosNuvemPalavras(candidatoIds = null, cargoIds = null, car
             };
         }
 
-        // Rest of the function remains the same...
         const contadorPalavras = new Map();
         const contadorTemas = new Map();
         let totalTextos = 0;
